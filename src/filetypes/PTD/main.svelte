@@ -42,6 +42,28 @@
         })
     );
 
+    // Virtualization / Windowing
+    let containerElement: HTMLDivElement | undefined = $state();
+    let scrollTop = $state(0);
+    let containerHeight = $state(600);
+
+    const ROW_HEIGHT = 72;
+    const OVERSCAN = 10;
+
+    let totalRows = $derived(filteredEntries.length);
+    let startIndex = $derived(Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN));
+    let endIndex = $derived(Math.min(totalRows, Math.ceil((scrollTop + containerHeight) / ROW_HEIGHT) + OVERSCAN));
+
+    let topSpacerHeight = $derived(startIndex * ROW_HEIGHT);
+    let bottomSpacerHeight = $derived((totalRows - endIndex) * ROW_HEIGHT);
+
+    let visibleEntries = $derived(filteredEntries.slice(startIndex, endIndex));
+
+    function handleScroll(e: Event) {
+        const target = e.target as HTMLDivElement;
+        scrollTop = target.scrollTop;
+    }
+
     export function save(): FileData {
         setUnsavedChanges(false);
         return $state.snapshot(ptdData);
@@ -52,7 +74,6 @@
     }
 
     function exportJSON() {
-        // Build both key-value dictionary and list for translator friendliness
         const exportObj = {
             magic: "PTD",
             count: ptdData.entries.length,
@@ -88,7 +109,6 @@
                 } else if (Array.isArray(parsed)) {
                     ptdData.entries = parsed;
                 } else if (typeof parsed === "object") {
-                    // Key-value object mapping
                     const entries: PTDEntry[] = [];
                     let idx = 0;
                     for (const [k, v] of Object.entries(parsed)) {
@@ -195,7 +215,12 @@
         </div>
     {/if}
 
-    <div class="table-container">
+    <div
+        class="table-container"
+        bind:this={containerElement}
+        bind:clientHeight={containerHeight}
+        onscroll={handleScroll}
+    >
         <table class="strings-table">
             <thead>
                 <tr>
@@ -204,8 +229,14 @@
                 </tr>
             </thead>
             <tbody>
-                {#each filteredEntries as entry (entry.id)}
-                    <tr>
+                {#if topSpacerHeight > 0}
+                    <tr class="virtual-spacer" style="height: {topSpacerHeight}px;">
+                        <td colspan="2"></td>
+                    </tr>
+                {/if}
+
+                {#each visibleEntries as entry (entry.id)}
+                    <tr class="string-row">
                         <td class="col-id">
                             <div class="id-group">
                                 <span class="id-tag">#{entry.id}</span>
@@ -225,6 +256,13 @@
                         </td>
                     </tr>
                 {/each}
+
+                {#if bottomSpacerHeight > 0}
+                    <tr class="virtual-spacer" style="height: {bottomSpacerHeight}px;">
+                        <td colspan="2"></td>
+                    </tr>
+                {/if}
+
                 {#if filteredEntries.length === 0}
                     <tr>
                         <td colspan="2" class="empty-state">
@@ -348,8 +386,10 @@
     }
 
     .warning-icon {
-        flex-shrink: 0;
+        display: flex;
+        align-items: center;
         color: #f59e0b;
+        flex-shrink: 0;
     }
 
     .warning-content {
@@ -362,6 +402,7 @@
         flex-grow: 1;
         overflow-y: auto;
         padding: 12px 16px;
+        position: relative;
     }
 
     .strings-table {
@@ -380,7 +421,7 @@
         text-transform: uppercase;
         letter-spacing: 0.05em;
         position: sticky;
-        top: 0;
+        top: -12px;
         z-index: 10;
     }
 
@@ -388,6 +429,17 @@
         padding: 6px 12px;
         border-bottom: 1px solid var(--border-subtle, #242430);
         vertical-align: top;
+    }
+
+    .virtual-spacer td {
+        padding: 0 !important;
+        border: none !important;
+        height: inherit;
+    }
+
+    .string-row {
+        height: 72px;
+        box-sizing: border-box;
     }
 
     .col-id {

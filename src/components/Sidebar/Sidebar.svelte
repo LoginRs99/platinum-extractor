@@ -10,12 +10,14 @@
         FolderPlus,
         Package,
         Layers,
-        Sparkles
+        Sparkles,
+        Archive
     } from "@lucide/svelte";
     import FileDirectory from "./FileDirectory.svelte";
     import type FileHandler from "../../lib/FileHandler";
     import { componentTabs } from "../Main/MainStore";
     import { currentTheme, toggleTheme } from "../../lib/theme";
+    import { addToast } from "../Toasts/ToastStore";
 
     let { fileHandler }: { fileHandler: FileHandler } = $props();
 
@@ -45,6 +47,30 @@
         if (confirm("Are you sure you want to clear all loaded files from the workspace?")) {
             $fileHandlerFiles = [];
             $componentTabs = [];
+        }
+    }
+
+    async function handleRepackPKZ() {
+        try {
+            const buffer = await fileHandler.repackPKZ();
+            const blob = new Blob([buffer], { type: "application/octet-stream" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "repacked.pkz";
+            a.click();
+            URL.revokeObjectURL(url);
+            addToast({
+                type: "success",
+                title: "PKZ Repacked",
+                message: `Successfully repacked ${$fileHandlerFiles.length} files into repacked.pkz (${(buffer.byteLength / 1024 / 1024).toFixed(2)} MB)`
+            });
+        } catch (err: any) {
+            addToast({
+                type: "danger",
+                title: "Repack Failed",
+                message: err?.message || String(err)
+            });
         }
     }
 
@@ -129,10 +155,16 @@
         <div class="stats-row">
             <span>{fileCount} item{fileCount === 1 ? "" : "s"} loaded</span>
             {#if fileCount > 0}
-                <button class="clear-all-btn" onclick={deleteAllFiles} title="Clear all files">
-                    <Trash2 size={13} />
-                    <span>Clear All</span>
-                </button>
+                <div class="footer-actions">
+                    <button class="repack-btn" onclick={handleRepackPKZ} title="Repack all loaded files into a .pkz archive">
+                        <Archive size={13} />
+                        <span>Repack PKZ</span>
+                    </button>
+                    <button class="clear-all-btn" onclick={deleteAllFiles} title="Clear all files">
+                        <Trash2 size={13} />
+                        <span>Clear All</span>
+                    </button>
+                </div>
             {/if}
         </div>
 
@@ -373,6 +405,32 @@
         justify-content: space-between;
         font-size: 0.72rem;
         color: var(--text-dim, #6d6d80);
+    }
+
+    .footer-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .repack-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        border: 1px solid rgba(0, 99, 219, 0.3);
+        background-color: rgba(0, 99, 219, 0.15);
+        color: #58a6ff;
+        font-size: 0.72rem;
+        font-weight: 500;
+        cursor: pointer;
+        padding: 2px 6px;
+        border-radius: 4px;
+        transition: all 0.15s ease;
+    }
+
+    .repack-btn:hover {
+        background-color: rgba(0, 99, 219, 0.3);
+        border-color: #58a6ff;
     }
 
     .clear-all-btn {

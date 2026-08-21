@@ -1,6 +1,11 @@
 import { addToast } from "../components/Toasts/ToastStore";
 import { loadedComponentIndex, componentTabs } from "../components/Main/MainStore";
 import { get, writable, type Writable } from "svelte/store";
+import repackPKZ, { type PKZInputFile } from "../filetypes/PKZ/repack";
+import repackPTD from "../filetypes/PTD/repack";
+import repackBXM from "../filetypes/BXM/repack";
+import repackCSV from "../filetypes/CSV/repack";
+import repackDAT from "../filetypes/DAT/repack";
 
 export interface VisualizerModule {
     component?: any;
@@ -323,5 +328,77 @@ export default class FileHandler {
                 ]);
             }
         }
+    }
+
+    async getFileBuffer(file: PlatinumFile): Promise<ArrayBuffer> {
+        if (file.isPartial) {
+            await file.extract();
+        }
+
+        const rawData = get(file.data);
+        if (!rawData) return new ArrayBuffer(0);
+
+        if (rawData instanceof ArrayBuffer) {
+            return rawData;
+        }
+        if (rawData instanceof Uint8Array) {
+            const copy = new Uint8Array(rawData.byteLength);
+            copy.set(rawData);
+            return copy.buffer;
+        }
+        if (rawData.target instanceof ArrayBuffer) {
+            return rawData.target;
+        }
+        if (rawData.arrayBuffer instanceof ArrayBuffer) {
+            return rawData.arrayBuffer;
+        }
+
+        if (file.resolvedType === "PTD") {
+            return await repackPTD(rawData);
+        }
+        if (file.resolvedType === "BXM") {
+            return await repackBXM(rawData);
+        }
+        if (file.resolvedType === "CSV") {
+            return await repackCSV(rawData);
+        }
+        if (file.resolvedType === "DAT") {
+            return await repackDAT(rawData);
+        }
+
+        try {
+            const resp = await this.sendMessage('repack', { filetype: file.resolvedType, data: rawData });
+            if (resp && resp.data instanceof ArrayBuffer) {
+                return resp.data;
+            }
+        } catch {
+            // Ignore worker repack failure
+        }
+
+        return new ArrayBuffer(0);
+    }
+
+    async repackPKZ(filesToRepack?: PlatinumFile[], archiveName: string = "archive.pkz"): Promise<ArrayBuffer> {
+        const targetFiles = filesToRepack && filesToRepack.length > 0 ? filesToRepack : get(this.files);
+        if (targetFiles.length === 0) {
+            throw new Error("No files loaded to repack into PKZ archive.");
+        }
+
+        const pkzInputs: PKZInputFile[] = [];
+        for (const file of targetFiles) {
+            const buffer = await this.getFileBuffer(file);
+            let name = file.name;
+            if (name.includes("/")) {
+                const parts = name.split("/");
+                name = parts[parts.length - 1];
+            }
+            pkzInputs.push({
+                name,
+                data: buffer,
+                compressionType: "ZStandard"
+            });
+        }
+
+        return await repackPKZ(pkzInputs, true);
     }
 }

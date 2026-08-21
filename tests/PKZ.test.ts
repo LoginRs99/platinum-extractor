@@ -3,6 +3,8 @@ import PlatinumFileReader from "../src/lib/PlatinumFileReader";
 import extractPKZ from "../src/filetypes/PKZ/extract";
 import repackPKZ from "../src/filetypes/PKZ/repack";
 import extract_partial from "../src/filetypes/PKZ/extract_partial";
+import repackPTD from "../src/filetypes/PTD/repack";
+import extractPTD from "../src/filetypes/PTD/extract";
 
 describe("PKZ Archive Parser & Repacker", () => {
     it("round-trips files through repackPKZ and extractPKZ with ZStandard compression", async () => {
@@ -34,5 +36,39 @@ describe("PKZ Archive Parser & Repacker", () => {
 
         const partial2 = await extract_partial(extracted.files[1], extracted);
         expect(partial2.data.byteLength).toBe(dummyData2.byteLength);
+    });
+
+    it("round-trips edited PTD child files within a repacked PKZ archive", async () => {
+        // 1. Create a child PTD binary
+        const originalPtdData = {
+            magic: "PTD\0",
+            shiftKey: 0x26,
+            parseMethod: "structured" as const,
+            entries: [
+                { id: 0, key: "NPC_Greeting", text: "Szervusz! Üdvözöllek a bázison." },
+                { id: 1, key: "Quest_Title", text: "Különleges Küldetés: Őrjárat" }
+            ]
+        };
+        const ptdBuffer = await repackPTD(originalPtdData);
+
+        // 2. Repack into PKZ
+        const pkzBuffer = await repackPKZ([
+            { name: "Text_HUn.bin", data: ptdBuffer, compressionType: "ZStandard" }
+        ], true);
+
+        // 3. Extract PKZ archive
+        const pkzReader = new PlatinumFileReader(pkzBuffer);
+        const extractedPkz = await extractPKZ(pkzReader);
+
+        expect(extractedPkz.files.length).toBe(1);
+        expect(extractedPkz.files[0].name).toBe("Text_HUn.bin");
+
+        // 4. Extract child partial file and parse as PTD
+        const childPartial = await extract_partial(extractedPkz.files[0], extractedPkz);
+        const childPtd = await extractPTD(new PlatinumFileReader(childPartial.data));
+
+        expect(childPtd.entries.length).toBe(2);
+        expect(childPtd.entries[0].text).toBe("Szervusz! Üdvözöllek a bázison.");
+        expect(childPtd.entries[1].text).toBe("Különleges Küldetés: Őrjárat");
     });
 });
