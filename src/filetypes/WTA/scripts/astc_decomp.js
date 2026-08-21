@@ -1,19 +1,23 @@
 
-// include: shell.js
-// The Module object: Our interface to the outside world. We import
-// and export values on it. There are various ways Module can be used:
-// 1. Not defined. We create it here
-// 2. A function parameter, function(Module) { ..generated code.. }
-// 3. pre-run appended it, var Module = {}; ..generated code..
-// 4. External script tag defines var Module.
-// We need to check if Module already exists (e.g. case 3 above).
-// Substitution will be replaced with actual code on later stage of the build,
-// this way Closure Compiler will not mangle it (e.g. case 4. above).
-// Note that if you want to run closure, and also to use Module
-// after the generated code, you will need to define   var Module = {};
-// before the code. Then that object will be used in the code, and you
-// can continue to use Module afterwards as well.
+import { astcWasmBase64 } from './astc_wasm_base64';
+
+function decodeBase64ToBytes(base64) {
+  var binary = typeof atob === 'function' ? atob(base64) : Buffer.from(base64, 'base64').toString('binary');
+  var bytes = new Uint8Array(binary.length);
+  for (var i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
 var Module = typeof Module != 'undefined' ? Module : {};
+if (!Module['wasmBinary']) {
+  try {
+    Module['wasmBinary'] = decodeBase64ToBytes(astcWasmBase64);
+  } catch (e) {
+    console.warn('WASM inline preload failed:', e);
+  }
+}
 // --pre-jses are emitted after the Module integration code, so that they can
 // refer to Module (if they choose; they can also define Module)
 

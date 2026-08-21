@@ -11,3 +11,13 @@ declare module 'ooz-wasm' {
     export function decompressUnsafe(data: Uint8Array, uncompressedSize: number): Promise<Uint8Array>;
     export function decompress(data: Uint8Array, uncompressedSize: number): Promise<Uint8Array>;
 }
+
+declare module '*.wasm?url' {
+    const url: string;
+    export default url;
+}
+
+declare module '*.wasm' {
+    const url: string;
+    export default url;
+}
