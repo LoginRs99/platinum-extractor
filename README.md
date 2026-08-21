@@ -1,8 +1,18 @@
 # Platinum Extractor v2.0
 
-> A fast, 100% client-side web application for extracting, viewing, and modding PlatinumGames game archives and reverse-engineered binary file formats.
-> 
-> Forked and modernized from [cabalex/platinum-extractor](https://github.com/cabalex/platinum-extractor) (and spiritual successor to [Astral Extractor](https://cabalex.github.io/astral-extractor)).
+[![Build & Deploy to GitHub Pages](https://github.com/LoginRs99/platinum-extractor/actions/workflows/deploy.yml/badge.svg)](https://github.com/LoginRs99/platinum-extractor/actions/workflows/deploy.yml)
+[![Live Web App](https://img.shields.io/badge/Live%20App-GitHub%20Pages-0063db)](https://loginrs99.github.io/platinum-extractor/)
+
+> A fast, modern, 100% client-side web application for extracting, viewing, and modding PlatinumGames game archives and reverse-engineered binary file formats.
+>
+> 🌐 **Live Website:** [https://loginrs99.github.io/platinum-extractor/](https://loginrs99.github.io/platinum-extractor/)
+
+---
+
+## 🌟 About & History
+
+- **Original Creator:** Created by [Cabalex](https://cabalex.github.io) as [cabalex/platinum-extractor](https://github.com/cabalex/platinum-extractor), built as the spiritual successor to [Astral Extractor](https://cabalex.github.io/astral-extractor).
+- **v2.0 Modernized Rewrite:** Maintained by [LoginRs99](https://github.com/LoginRs99/platinum-extractor) with full architectural modernization, bug fixes, Svelte 5 migration, and test suite engineered by **Antigravity (Google DeepMind)**.
 
 ---
 
@@ -94,11 +104,12 @@ npm run build
 
 ## 🙏 Thanks & Credits
 
-- **Forked from:** [cabalex/platinum-extractor](https://github.com/cabalex/platinum-extractor)
-- **Original Author:** [Cabalex](https://cabalex.github.io)
+- **Original Creator:** [Cabalex](https://cabalex.github.io) — [cabalex/platinum-extractor](https://github.com/cabalex/platinum-extractor)
+- **Modernization & Maintenance:** [LoginRs99](https://github.com/LoginRs99/platinum-extractor)
+- **Architectural Engineering:** [Antigravity (Google DeepMind)](https://deepmind.google/)
 - **Icons:** [Icons8](https://icons8.com) & [Lucide Icons](https://lucide.dev)
 - **Reverse Engineering & Format Research:**
   - Kerilk's [bayonetta_tools](https://github.com/Kerilk/bayonetta_tools/)
   - kohos' [CriTools](https://github.com/kohos/CriTools)
   - Astral Chain & NieR modding communities
-- **PlatinumGames:** For making iconic action games!
+- **PlatinumGames:** For making legendary action games!

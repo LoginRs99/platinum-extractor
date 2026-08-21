@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { Package, ShieldCheck, Zap, Layers, Sparkles, FileCode, Cpu } from "@lucide/svelte";
+    import { Package, ShieldCheck, Zap, Layers, Sparkles, FileCode, Cpu, Heart } from "@lucide/svelte";
 </script>
 
 <div class="welcome-container">
@@ -52,10 +52,17 @@
         </div>
 
         <footer class="welcome-footer">
-            <p>Special thanks to the Astral Chain and NieR modding communities.</p>
-            <p class="credits">
-                Credits: Kerilk's <em>bayonetta_tools</em> &bull; kohos' <em>CriTools</em> &bull; Icons by Icons8 &bull; PlatinumGames
-            </p>
+            <div class="credits-box">
+                <p class="credits-lead">
+                    Created by <strong>Cabalex</strong> &bull; Modernized by <strong>LoginRs99</strong> & <strong>Antigravity (Google DeepMind)</strong>
+                </p>
+                <p class="credits-details">
+                    Format research by <em>Kerilk</em> (bayonetta_tools), <em>kohos</em> (CriTools), and the Astral Chain & NieR modding communities.
+                </p>
+                <p class="disclaimer">
+                    All game intellectual property belongs to PlatinumGames and respective copyright holders.
+                </p>
+            </div>
         </footer>
     </div>
 </div>
@@ -82,7 +89,7 @@
         box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
         display: flex;
         flex-direction: column;
-        gap: 28px;
+        gap: 24px;
     }
 
     .welcome-hero {
@@ -96,13 +103,13 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 68px;
-        height: 68px;
+        width: 64px;
+        height: 64px;
         border-radius: 16px;
         background: linear-gradient(135deg, #0063db, #0049a3);
         color: #ffffff;
         box-shadow: 0 6px 20px rgba(0, 99, 219, 0.35);
-        margin-bottom: 16px;
+        margin-bottom: 14px;
     }
 
     .version-tag {
@@ -128,7 +135,7 @@
 
     .tagline {
         margin: 8px 0 0 0;
-        font-size: 0.95rem;
+        font-size: 0.92rem;
         color: var(--text-muted, #9595a6);
         max-width: 520px;
         line-height: 1.5;
@@ -137,7 +144,7 @@
     .features-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-        gap: 16px;
+        gap: 14px;
     }
 
     .feature-item {
@@ -178,18 +185,18 @@
         background: linear-gradient(135deg, rgba(0, 99, 219, 0.1), transparent);
         border: 1px solid rgba(0, 99, 219, 0.25);
         border-radius: 10px;
-        padding: 16px 20px;
+        padding: 14px 18px;
     }
 
     .quick-start-box h3 {
-        margin: 0 0 6px 0;
-        font-size: 0.9rem;
+        margin: 0 0 4px 0;
+        font-size: 0.88rem;
         color: #58a6ff;
     }
 
     .quick-start-box p {
         margin: 0;
-        font-size: 0.82rem;
+        font-size: 0.8rem;
         color: var(--text-muted, #9595a6);
         line-height: 1.4;
     }
@@ -204,17 +211,32 @@
 
     .welcome-footer {
         border-top: 1px solid var(--border-subtle, #282836);
-        padding-top: 16px;
+        padding-top: 14px;
+    }
+
+    .credits-box {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
         text-align: center;
+        gap: 4px;
     }
 
-    .welcome-footer p {
-        margin: 4px 0;
-        font-size: 0.75rem;
+    .credits-lead {
+        margin: 0;
+        font-size: 0.82rem;
+        color: var(--text-color, #ededf2);
+    }
+
+    .credits-details {
+        margin: 0;
+        font-size: 0.74rem;
+        color: var(--text-muted, #9595a6);
+    }
+
+    .disclaimer {
+        margin: 4px 0 0 0;
+        font-size: 0.68rem;
         color: var(--text-dim, #6d6d80);
-    }
-
-    .credits {
-        font-size: 0.7rem;
     }
 </style>
