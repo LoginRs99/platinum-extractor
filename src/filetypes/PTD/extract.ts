@@ -10,6 +10,7 @@ export interface PTDEntry {
 export interface FileData {
     magic: string;
     shiftKey: number;
+    parseMethod: "structured" | "fallback";
     entries: PTDEntry[];
     rawPrefix?: Uint8Array;
     rawSuffix?: Uint8Array;
@@ -45,6 +46,7 @@ async function extract(file: PlatinumFileReader): Promise<FileData> {
         return {
             magic: "PTD\0",
             shiftKey: 0x26,
+            parseMethod: "fallback",
             entries: []
         };
     }
@@ -122,6 +124,7 @@ async function extract(file: PlatinumFileReader): Promise<FileData> {
         return {
             magic,
             shiftKey,
+            parseMethod: "structured",
             entries,
             rawPrefix,
             rawSuffix,
@@ -162,6 +165,7 @@ async function extract(file: PlatinumFileReader): Promise<FileData> {
         return {
             magic,
             shiftKey,
+            parseMethod: "fallback",
             entries
         };
     }

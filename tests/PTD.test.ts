@@ -14,6 +14,7 @@ describe("PTD Binary Text Archive Parser & Repacker", () => {
         const sampleData = {
             magic: "PTD\0",
             shiftKey: 0x26,
+            parseMethod: "structured" as const,
             entries: [
                 { id: 0, key: "System_Title", text: "Neuron Police Department" },
                 { id: 1, key: "Legion_Style", text: "Sword Legion Active" },
@@ -40,6 +41,7 @@ describe("PTD Binary Text Archive Parser & Repacker", () => {
         const extracted = await extractPTD(reader);
 
         expect(extracted.entries.length).toBe(4);
+        expect(extracted.parseMethod).toBeDefined();
 
         expect(extracted.entries[0].id).toBe(0);
         expect(extracted.entries[0].text).toBe("Neuron Police Department");
@@ -52,5 +54,40 @@ describe("PTD Binary Text Archive Parser & Repacker", () => {
 
         expect(extracted.entries[3].id).toBe(3);
         expect(extracted.entries[3].text).toBe("Mission Complete: Rank S+");
+    });
+
+    it("marks parseMethod as fallback for corrupted/incomplete headers", async () => {
+        const dummyBuffer = new ArrayBuffer(20);
+        const reader = new PlatinumFileReader(dummyBuffer);
+        const extracted = await extractPTD(reader);
+        expect(extracted.parseMethod).toBe("fallback");
+    });
+
+    it("throws a clear error when structured repack entry count does not match original header count", async () => {
+        const dummyPrefix = new Uint8Array(64);
+        const mockStructuredData = {
+            magic: "PTD\0",
+            shiftKey: 0x26,
+            parseMethod: "structured" as const,
+            rawPrefix: dummyPrefix,
+            rawSuffix: new Uint8Array(0),
+            headerInfo: {
+                stringDataPos: 28,
+                hasGroupId: false,
+                groupCount: 0,
+                textCount: 3,
+                charNameCount: 0,
+                textDataPos: 40
+            },
+            entries: [
+                { id: 0, text: "Line 1" },
+                { id: 1, text: "Line 2" }
+                // Missing entry 3
+            ]
+        };
+
+        await expect(repackPTD(mockStructuredData)).rejects.toThrow(
+            "PTD repack failed: expected 3 entries, got 2"
+        );
     });
 });

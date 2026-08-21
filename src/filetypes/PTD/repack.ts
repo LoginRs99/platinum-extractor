@@ -21,6 +21,10 @@ async function repack(data: FileData | any): Promise<ArrayBuffer> {
 
     // If structured rawPrefix and rawSuffix are present, perform 100% structured repacking
     if (data.rawPrefix && data.headerInfo) {
+        if (entries.length !== data.headerInfo.textCount) {
+            throw new Error(`PTD repack failed: expected ${data.headerInfo.textCount} entries, got ${entries.length}. Entries can be edited in place but not added/removed for structured repacking.`);
+        }
+
         const rawPrefix = new Uint8Array(data.rawPrefix);
         const rawSuffix = data.rawSuffix ? new Uint8Array(data.rawSuffix) : new Uint8Array(0);
 

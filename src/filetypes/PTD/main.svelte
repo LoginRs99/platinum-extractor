@@ -1,7 +1,8 @@
 <script lang="ts">
-    import { Search, Download, Upload, FileText } from "@lucide/svelte";
+    import { Search, Download, Upload, FileText, AlertCircle } from "@lucide/svelte";
     import type { FileData, PTDEntry } from "./extract";
     import repack from "./repack";
+    import { addToast } from "../../components/Toasts/ToastStore";
 
     let {
         name,
@@ -16,6 +17,7 @@
     let ptdData: FileData = $state({
         magic: "PTD\0",
         shiftKey: 0x26,
+        parseMethod: "structured",
         entries: []
     });
 
@@ -99,8 +101,17 @@
                     }
                 }
                 setUnsavedChanges(true);
-            } catch (err) {
-                alert("Failed to parse JSON file: " + String(err));
+                addToast({
+                    type: "info",
+                    title: "JSON Imported",
+                    message: `Imported ${ptdData.entries.length} entries into ${name}`
+                });
+            } catch (err: any) {
+                addToast({
+                    type: "danger",
+                    title: "Import Error",
+                    message: "Failed to parse JSON file: " + (err?.message || String(err))
+                });
             }
             target.value = "";
         };
@@ -108,14 +119,34 @@
     }
 
     async function downloadRepackedBIN() {
-        const buffer = await repack($state.snapshot(ptdData));
-        const blob = new Blob([buffer], { type: "application/octet-stream" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = name.endsWith(".bin") ? name : `${name}.bin`;
-        a.click();
-        URL.revokeObjectURL(url);
+        try {
+            if (ptdData.parseMethod === "fallback") {
+                addToast({
+                    type: "warning",
+                    title: "Fallback Repack Warning",
+                    message: "This file was extracted using fallback heuristic. Edits may produce a file that does not load correctly in-game."
+                });
+            }
+            const buffer = await repack($state.snapshot(ptdData));
+            const blob = new Blob([buffer], { type: "application/octet-stream" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = name.endsWith(".bin") ? name : `${name}.bin`;
+            a.click();
+            URL.revokeObjectURL(url);
+            addToast({
+                type: "success",
+                title: "Repack Successful",
+                message: `Successfully repacked ${name} (${(buffer.byteLength / 1024).toFixed(1)} KB)`
+            });
+        } catch (err: any) {
+            addToast({
+                type: "danger",
+                title: "Repack Failed",
+                message: err?.message || String(err)
+            });
+        }
     }
 </script>
 
@@ -151,6 +182,18 @@
             </button>
         </div>
     </header>
+
+    {#if ptdData.parseMethod === "fallback"}
+        <div class="fallback-warning-banner">
+            <span class="warning-icon">
+                <AlertCircle size={16} />
+            </span>
+            <div class="warning-content">
+                <strong>Fallback Parse Warning:</strong>
+                <span>This file's structure wasn't fully understood and was parsed using a raw byte scanner. Edits may produce a file that does not load correctly in-game. Proceed with caution.</span>
+            </div>
+        </div>
+    {/if}
 
     <div class="table-container">
         <table class="strings-table">
@@ -289,6 +332,30 @@
 
     .action-btn.primary:hover {
         background-color: var(--accent-hover, #0056bf);
+    }
+
+    .fallback-warning-banner {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background-color: rgba(234, 179, 8, 0.15);
+        border-bottom: 1px solid rgba(234, 179, 8, 0.35);
+        color: #fbbf24;
+        padding: 8px 16px;
+        font-size: 0.8rem;
+        line-height: 1.4;
+        flex-shrink: 0;
+    }
+
+    .warning-icon {
+        flex-shrink: 0;
+        color: #f59e0b;
+    }
+
+    .warning-content {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
     }
 
     .table-container {
