@@ -2,41 +2,54 @@ import { addToast } from "../components/Toasts/ToastStore";
 import { loadedComponentIndex, componentTabs } from "../components/Main/MainStore";
 import { get, writable, type Writable } from "svelte/store";
 
-function loadComponents() {
-    const fileTypes = {};
+export interface VisualizerModule {
+    component?: any;
+    visualizerInfo?: {
+        name: string;
+        match: string;
+        folderMatch: string[];
+        description: string;
+        buttonText: string;
+        icon: string;
+        credits: string;
+    };
+}
+
+function loadComponents(): Record<string, any> {
+    const fileTypes: Record<string, any> = {};
   
-    const context = import.meta.glob('/src/filetypes/*/*.svelte', { eager: true });
+    const context = import.meta.glob<Record<string, any>>('../filetypes/*/*.svelte', { eager: true });
     for (const [path, module] of Object.entries(context)) {
-        const [, folderName, fileName] = path.match(/^.+\/filetypes\/([^/]+)\/(.*)\.(ts|svelte)$/);
+        const normalized = path.replace(/\\/g, '/');
+        const match = normalized.match(/(?:^|\/)filetypes\/([^/]+)\/([^/]+)\.svelte$/);
+        if (!match) continue;
+        const [, folderName, fileName] = match;
         if (folderName === 'Base') continue;
-        if (!fileTypes[folderName]) {
-            fileTypes[folderName] = {};
-        }
         if (fileName === 'main') {
-            // @ts-ignore
             fileTypes[folderName] = module.default;
         }
     }
     return fileTypes;
 }
 
-function loadVisualizers() {
-    const visualizerTypes = {};
+function loadVisualizers(): Record<string, VisualizerModule> {
+    const visualizerTypes: Record<string, VisualizerModule> = {};
   
-    const context = import.meta.glob('/src/visualizers/*/*.{ts,svelte}', { eager: true });
+    const context = import.meta.glob<Record<string, any>>('../visualizers/*/*.{ts,svelte}', { eager: true });
     for (const [path, module] of Object.entries(context)) {
-        const [, folderName, fileName] = path.match(/^.+\/visualizers\/([^/]+)\/(.*)\.(ts|svelte)$/);
+        const normalized = path.replace(/\\/g, '/');
+        const match = normalized.match(/(?:^|\/)visualizers\/([^/]+)\/([^/]+)\.(ts|svelte)$/);
+        if (!match) continue;
+        const [, folderName, fileName] = match;
         if (folderName === 'Base') continue;
         if (!visualizerTypes[folderName]) {
             visualizerTypes[folderName] = {};
         }
         switch (fileName) {
             case 'visualizer':
-                // @ts-ignore
                 visualizerTypes[folderName].component = module.default;
                 break;
             case 'visualizerInfo':
-                // @ts-ignore
                 visualizerTypes[folderName].visualizerInfo = module.default;
                 break;
             default:
@@ -55,11 +68,19 @@ export class PlatinumFile {
     unknown = false;
     icon = "file";
     resolvedType = "unknown";
-    extractFn?: (caller: PlatinumFile) => Promise<any>;
+    extractFn?: ((caller: PlatinumFile) => Promise<any>) | null;
 
-    constructor(name: string, data: any, isPartial: boolean, repackable: boolean, resolvedType?: string, icon?: string, extractFn?: () => Promise<any>) {
+    constructor(
+        name: string,
+        data: any,
+        isPartial: boolean,
+        repackable: boolean,
+        resolvedType?: string,
+        icon?: string,
+        extractFn?: (caller: PlatinumFile) => Promise<any>
+    ) {
         this.name = name;
-        this.baseName = name.split('/').pop();
+        this.baseName = name.split('/').pop() || name;
         this.data = writable(data);
         this.isPartial = isPartial;
         this.repackable = repackable;
@@ -83,52 +104,72 @@ export class PlatinumFile {
     }
 }
 
-
 export default class FileHandler {
     worker: Worker;
     components = loadComponents();
     visualizers = loadVisualizers();
     files: Writable<PlatinumFile[]> = writable([]);
+    private pendingMessages = new Map<string, { resolve: (data: any) => void; reject: (error: any) => void }>();
 
     constructor() {
-        this.worker = new Worker(new URL('./FileHandler.worker.ts', import.meta.url), {type: 'module'});
+        this.worker = new Worker(new URL('./FileHandler.worker.ts', import.meta.url), { type: 'module' });
+        
+        this.worker.addEventListener('message', (event: MessageEvent) => {
+            if (event.data === 'loaded') return;
+            const { id, data } = event.data || {};
+            if (id && this.pendingMessages.has(id)) {
+                const handler = this.pendingMessages.get(id)!;
+                this.pendingMessages.delete(id);
+                if (data && (data.error || data.ok === false)) {
+                    handler.reject(data.error || "An error occurred (received non-OK response)");
+                } else {
+                    handler.resolve(data);
+                }
+            }
+        });
+
+        this.worker.addEventListener('error', (event: ErrorEvent) => {
+            for (const [, handler] of this.pendingMessages.entries()) {
+                handler.reject(event);
+            }
+            this.pendingMessages.clear();
+        });
     }
 
-    async sendMessage(type: string, data: any) {
-        let id = Math.random().toString(36).substring(7) + Date.now().toString(36);
+    async sendMessage(type: string, data: any): Promise<any> {
+        const id = Math.random().toString(36).substring(2) + Date.now().toString(36);
         return new Promise((resolve, reject) => {
-            this.worker.onmessage = (event) => {
-                if (event.data.id === id) {
-                    if (event.data.error || event.data.ok === false) {
-                        reject(event.data.error || "An error occurred (recieved non-OK response)");
-                    } else {
-                        resolve(event.data.data);
-                    }
-                }
-            };
-            this.worker.onerror = (event) => {
-                reject(event);
-            };
-            this.worker.postMessage({data, type, id});
+            this.pendingMessages.set(id, { resolve, reject });
+            this.worker.postMessage({ data, type, id });
         });
     }
 
     openFile(file: PlatinumFile) {
-        if (get(file.data).arrayBuffer && get(file.data).name) {
-            addToast({type: 'warning', timeout: 10000, title: `Failed to open ${file.name.split("/").pop()}`, message: "I don't currently support opening this file type right now, but you can open an issue to request support!"});
+        const currentData = get(file.data);
+        if (currentData && currentData.arrayBuffer && currentData.name) {
+            addToast({
+                type: 'warning',
+                timeout: 10000,
+                title: `Failed to open ${file.name.split("/").pop()}`,
+                message: "I don't currently support opening this file type right now, but you can open an issue to request support!"
+            });
             return;
         }
 
         // resolve component
         let component = this.components[file.resolvedType];
         if (!component) {
-            addToast({type: 'warning', timeout: 10000, title: `Failed to open ${file.name.split("/").pop()}`, message: `Despite an implementation existing (${file.resolvedType}), no component was found for this file type.\nAre you sure you should be opening this file?`});
+            addToast({
+                type: 'warning',
+                timeout: 10000,
+                title: `Failed to open ${file.name.split("/").pop()}`,
+                message: `Despite an implementation existing (${file.resolvedType}), no component was found for this file type.\nAre you sure you should be opening this file?`
+            });
             return;
         }
 
         if (get(componentTabs).map(tab => tab.file).includes(file)) {
             componentTabs.update(tabs => tabs.map(tab => {
-                // If file is double clicked, ensure it is kept
                 if (tab.file === file) {
                     tab.unchanged.set(false);
                 }
@@ -140,7 +181,7 @@ export default class FileHandler {
 
         // set component
         componentTabs.update(tabs => [...tabs.filter(tab => !get(tab.unchanged)), {
-            name: file.name.split("/").pop(),
+            name: file.name.split("/").pop() || file.name,
             file,
             unchanged: writable(true),
             unsaved: writable(false),
@@ -151,13 +192,8 @@ export default class FileHandler {
 
     /**
      * Create a tab for the given visualizer.
-     * @param visualizer
-     * @param files  The files the visualizer should visualize.
-     * @param folderName The name of the folder to visualize.
-     * @returns 
      */
-    visualizeFolder(visualizer: any, files: PlatinumFile[], folderName: string) {
-        // resolve component
+    visualizeFolder(visualizer: VisualizerModule, files: PlatinumFile[], folderName: string) {
         if (!visualizer.component) {
             addToast({
                 type: 'warning',
@@ -168,11 +204,10 @@ export default class FileHandler {
             return;
         }
 
-        let tabName = visualizer.visualizerInfo.name + " - " + folderName;
+        let tabName = (visualizer.visualizerInfo?.name || "Visualizer") + " - " + folderName;
 
         if (get(componentTabs).map(tab => tab.name).includes(tabName)) {
             componentTabs.update(tabs => tabs.map(tab => {
-                // If file is double clicked, ensure it is kept
                 if (tab.name === tabName) {
                     tab.unchanged.set(false);
                 }
@@ -194,22 +229,29 @@ export default class FileHandler {
     }
 
     async extractPartialFile(baseFiletype: string, baseFile: any, partialFile: any, caller: PlatinumFile) {
-        let response: any = await this.sendMessage('extract_partial', {baseFile, partialFile, filetype: baseFiletype})
+        let response: any = await this.sendMessage('extract_partial', { baseFile, partialFile, filetype: baseFiletype })
             .catch((e) => {
-                addToast({type: 'warning', timeout: 10000, title: `Failed to extract ${partialFile.name} from ${baseFile.baseFile.name}`, message: e});
-            })
+                addToast({
+                    type: 'warning',
+                    timeout: 10000,
+                    title: `Failed to extract ${partialFile.name} from ${baseFile.baseFile?.name || 'archive'}`,
+                    message: String(e)
+                });
+            });
         
         // Compressed (in PKZ) -> Archive formats (DAT/DTT)
-        if (response.data.files) {
-            // remove original object
-            let files = get(this.files);
-            files.splice(files.indexOf(caller), 1);
-            files.push(
+        if (response && response.data && response.data.files) {
+            let currentFiles = get(this.files);
+            const callerIdx = currentFiles.indexOf(caller);
+            if (callerIdx !== -1) {
+                currentFiles.splice(callerIdx, 1);
+            }
+            currentFiles.push(
                 ...response.data.files.map(
-                    (f) => new PlatinumFile(partialFile.name + "/" + f.name, f.data, response.hasPartialFiles, response.isRepackable, f.filetype, response.icon)
+                    (f: any) => new PlatinumFile(partialFile.name + "/" + f.name, f.data, response.hasPartialFiles, response.isRepackable, f.filetype, response.icon)
                 )
-            )
-            this.files.set(files);
+            );
+            this.files.set(currentFiles);
         }
         
         return response;
@@ -217,37 +259,56 @@ export default class FileHandler {
 
     async import(files: File[]) {
         for (let file of files) {
-            let response: any = await this.sendMessage('extract', {target: file})
+            let response: any = await this.sendMessage('extract', { target: file })
                 .catch((e) => {
-                    addToast({type: 'warning', timeout: 10000, title: `Failed to extract ${file.name}`, message: e});
-                })
+                    addToast({
+                        type: 'warning',
+                        timeout: 10000,
+                        title: `Failed to extract ${file.name}`,
+                        message: String(e)
+                    });
+                });
 
             if (!response) continue;
 
             // Archive formats (DAT/DTT)
-            if (response.data.files) {
+            if (response.data && response.data.files) {
                 if (response.data.files.length === 0) {
-                    addToast({type: 'warning', timeout: 10000, title: `Failed to extract ${file.name}`, message: "No files found in archive"});
+                    addToast({
+                        type: 'warning',
+                        timeout: 10000,
+                        title: `Failed to extract ${file.name}`,
+                        message: "No files found in archive"
+                    });
                     continue;
                 }
 
                 // Partial files (large formats, PKZ/CPK)
-                let baseFn = undefined;
+                let baseFn: ((p: any, c: any) => Promise<any>) | undefined = undefined;
                 if (response.hasPartialFiles) {
                     baseFn = (partialFile: any, caller: any) => this.extractPartialFile(response.filetype, response.data, partialFile, caller);
                 }
 
                 this.files.update(f => [...f,
                     ...response.data.files.map(
-                        (f) => new PlatinumFile(f.name, f.data, response.hasPartialFiles, response.isRepackable, response.filetype, response.icon, baseFn ? baseFn.bind(this, f) : undefined)
+                        (subFile: any) => new PlatinumFile(
+                            subFile.name,
+                            subFile.data,
+                            response.hasPartialFiles,
+                            response.isRepackable,
+                            response.filetype,
+                            response.icon,
+                            baseFn ? baseFn.bind(this, subFile) : undefined
+                        )
                     )
                 ]);
             } else {
                 // Single file
-                this.files.update(f => [...f, new PlatinumFile(file.name, response.data, false, response.isRepackable, response.filetype, response.icon)]);
+                this.files.update(f => [
+                    ...f,
+                    new PlatinumFile(file.name, response.data, false, response.isRepackable, response.filetype, response.icon)
+                ]);
             }
         }
-
-        //this.files.set([...get(this.files), ...fileData]);
     }
-}
+}

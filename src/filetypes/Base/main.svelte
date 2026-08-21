@@ -2,19 +2,26 @@
     import type { FileData } from "./extract";
     import type FileHandler from "../../lib/FileHandler";
 
-    export let name: string;
-    export let data: FileData;
-    export let fileHandler: FileHandler; // If you want to access other files (fileHandler.files store)
-    export let setUnsavedChanges: (value: boolean) => {}; // Run setUnsavedChanges(true) to indicate that the file has unsaved changes
+    let { name, data, fileHandler, setUnsavedChanges }: {
+        name: string;
+        data: FileData;
+        fileHandler?: FileHandler;
+        setUnsavedChanges?: (value: boolean) => void;
+    } = $props();
 
-    export function save(): FileData|false {
-        // Whatever is returned here will update the file's data.
-        // Unsaved changes will automatically be set to false.
-        // Not able to save? Return false instead.
+    export function save(): FileData | false {
         return { myData: "Hello, world! This is my modded data." };
     }
 </script>
 
-<div>
-    Hello world! My file name is {name} and I have {data.myData} in me.
+<div class="base-container">
+    <h2>{name}</h2>
+    <p>Data: {data?.myData || "No data"}</p>
 </div>
+
+<style>
+    .base-container {
+        padding: 24px;
+        color: var(--text-color, #e0e0e0);
+    }
+</style>

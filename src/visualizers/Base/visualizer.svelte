@@ -2,28 +2,46 @@
     import type FileHandler from "../../lib/FileHandler";
     import type { PlatinumFile } from "../../lib/FileHandler";
 
-    export let name: string; // name of folder
-    export let files: { [key: string]: PlatinumFile }; // object with files
-    export let fileHandler: FileHandler; // If you want to access other files (fileHandler.files store)
-    export let setUnsavedChanges: (value: boolean) => {}; // Run setUnsavedChanges(true) to indicate that the file has unsaved changes
-
-    let questData = files["QuestData.bxm"].data;
-    // Each file's (extracted) data is stored in a Svelte store, so that it can be subscribed to.
-    // Access it with the dollar sign notation like so.
-    let questDataObject = $questData;
-
-    function changeQuestData() {
-        // There's no "save" function here. Instead, you can modify the data directly.
-        // Changing the data inside each file is as simple as modifying its store.
-        questData.set({ myData: "Hello, world! This is my modded data." });
-        setUnsavedChanges(false);
-    }
+    let {
+        name,
+        files = {},
+        fileHandler,
+        setUnsavedChanges = () => {}
+    }: {
+        name: string;
+        files: Record<string, PlatinumFile>;
+        fileHandler?: FileHandler;
+        setUnsavedChanges?: (value: boolean) => void;
+    } = $props();
 </script>
 
-<button on:click={changeQuestData}>
-    Change Quest Data
-</button>
+<div class="base-visualizer">
+    <h2>Visualizer: {name}</h2>
+    <div class="files-grid">
+        {#each Object.keys(files) as fileName}
+            <div class="file-item">
+                <span>{files[fileName].name}</span>
+            </div>
+        {/each}
+    </div>
+</div>
 
-{#each Object.keys(files) as fileName}
-    <div>Hello, I'm file {files[fileName].name}!</div>
-{/each}
+<style>
+    .base-visualizer {
+        padding: 24px;
+        color: var(--text-color, #e0e0e8);
+    }
+    .files-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 16px;
+    }
+    .file-item {
+        padding: 8px 12px;
+        background-color: var(--card-bg, #1e1e24);
+        border: 1px solid var(--border-color, #2e2e36);
+        border-radius: 6px;
+        font-family: monospace;
+    }
+</style>

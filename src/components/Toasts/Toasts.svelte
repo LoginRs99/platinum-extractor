@@ -1,170 +1,215 @@
 <script lang="ts">
-    import { beforeUpdate, afterUpdate } from "svelte";
-    import { slide } from 'svelte/transition';
-    import OpenInNew from "svelte-material-icons/OpenInNew.svelte";
-    import Close from "svelte-material-icons/Close.svelte";
-    import { dismissToast, toasts } from "./ToastStore";
+    import { slide } from "svelte/transition";
+    import {
+        Info,
+        CheckCircle2,
+        AlertTriangle,
+        AlertCircle,
+        X,
+        ExternalLink
+    } from "@lucide/svelte";
+    import { dismissToast, toasts, type Toast } from "./ToastStore";
 
-    let toastDiv;
-    let autoscroll;
-    let scrollable = false;
-    beforeUpdate(() => {
-        autoscroll = toastDiv && (toastDiv.offsetHeight + toastDiv.scrollTop) > (toastDiv.scrollHeight - 20);
-    });
-
-    afterUpdate(() => {
-        scrollable = toastDiv && toastDiv.scrollHeight > window.innerHeight;
-        if (autoscroll) {
-            let scrollAnimStart = Date.now();
-            const scroll = () => {
-                toastDiv.scrollTo(0, toastDiv.scrollHeight)
-                if (Date.now() - scrollAnimStart < 300) {
-                    requestAnimationFrame(scroll);
-                }
-                scrollable = toastDiv && toastDiv.scrollHeight > window.innerHeight;
-            };
-
-            requestAnimationFrame(scroll);
+    function getToastIcon(type?: string) {
+        switch (type) {
+            case "success": return CheckCircle2;
+            case "warning": return AlertTriangle;
+            case "danger": return AlertCircle;
+            default: return Info;
         }
-    });
-
+    }
 </script>
 
-{#if $toasts}
-    <div class="toasts" bind:this={toastDiv} style={scrollable ? "pointer-events: all" : ""}>
-        <div class="toastsScrollable">
-            {#each $toasts as toast (toast.id)}
-                <div
-                    class="toast"
-                    id={toast.id}
-                    class:info={toast.type === "info"}
-                    class:success={toast.type === "success"}
-                    class:warning={toast.type === "warning"}
-                    class:danger={toast.type === "danger"}
-                    transition:slide|local={{ duration: 200 }}
-                >
-                    <header>
-                        <div class="title">{toast.title}</div>
-                        {#if (toast.dismissable)}
-                        <button class="dismiss" on:click={() => dismissToast(toast.id)}>
-                            <Close />
+{#if $toasts.length > 0}
+    <div class="toast-container" role="region" aria-label="Notifications" aria-live="polite">
+        {#each $toasts as toast (toast.id)}
+            {@const IconComponent = getToastIcon(toast.type)}
+            <div
+                class="toast-card {toast.type || 'info'}"
+                id={`toast-${toast.id}`}
+                role="alert"
+                transition:slide={{ duration: 200 }}
+            >
+                <div class="toast-header">
+                    <div class="toast-icon">
+                        <IconComponent size={18} />
+                    </div>
+                    <span class="toast-title">{toast.title}</span>
+                    {#if toast.dismissable}
+                        <button
+                            class="toast-close"
+                            onclick={() => dismissToast(toast.id)}
+                            aria-label="Dismiss notification"
+                        >
+                            <X size={14} />
                         </button>
-                        {/if}
-                    </header>
-                    <div class="message">{toast.message}</div>
-                    {#if toast.link}
-                    <a href={toast.link.href} target="_blank" rel="noopener noreferrer">{toast.link.text} <OpenInNew /></a>
-                    {/if}
-                    {#if toast.timeout}
-                    <i>Dismissing in {Math.round(toast.timeout / 1000)}s</i>
-                    {/if}
-                    {#if toast.onCancel}
-                    <button class="cancelBtn" on:click={toast.onCancel}>Cancel</button>
-                    {/if}
-                    {#if typeof toast.progress === "number"}
-                    <div class="progress"><div class="bar" style="width: {toast.progress * 100}%" /></div>
                     {/if}
                 </div>
-            {/each}
-        </div>
+
+                {#if toast.message}
+                    <div class="toast-message">{toast.message}</div>
+                {/if}
+
+                {#if toast.link}
+                    <a
+                        href={toast.link.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="toast-link"
+                    >
+                        <span>{toast.link.text}</span>
+                        <ExternalLink size={13} />
+                    </a>
+                {/if}
+
+                {#if toast.onCancel}
+                    <button class="toast-cancel-btn" onclick={toast.onCancel}>
+                        Cancel
+                    </button>
+                {/if}
+
+                {#if typeof toast.progress === "number"}
+                    <div class="toast-progress">
+                        <div class="toast-progress-bar" style="width: {toast.progress * 100}%"></div>
+                    </div>
+                {/if}
+            </div>
+        {/each}
     </div>
 {/if}
 
 <style>
-    .toasts {
+    .toast-container {
         position: fixed;
-        bottom: 0;
-        right: 0;
-        padding: 10px;
-        height: calc(100% - 20px);
-        overflow-y: auto;
+        bottom: 16px;
+        right: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        z-index: 9999;
+        max-width: 380px;
+        width: calc(100vw - 32px);
         pointer-events: none;
-        z-index: 10;
     }
-    .toastsScrollable {
+
+    .toast-card {
+        pointer-events: auto;
         display: flex;
         flex-direction: column;
-        align-items: flex-end;
-        justify-content: flex-end;
-        min-height: 100%;
-    }
-    .toast {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        justify-content: center;
-        width: 300px;
-        padding: 10px;
-        margin-bottom: 10px;
-        border-radius: 5px;
-        background-color: #454545;
-        box-shadow: 0 0 10px 0 rgba(0, 0, 0, 0.5);
-        border-left: 5px solid #ccc;
-        white-space: pre-line;
-        pointer-events: all;
+        background-color: var(--bg-card, #1c1c24);
+        border: 1px solid var(--border-color, #2c2c38);
+        border-radius: 10px;
+        padding: 12px 14px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        gap: 6px;
         position: relative;
+        overflow: hidden;
     }
-    .toast .message {
-        overflow-wrap: break-word;
-        width: 100%;
+
+    .toast-card.info {
+        border-left: 4px solid var(--info, #58a6ff);
     }
-    .toast .progress {
+    .toast-card.success {
+        border-left: 4px solid var(--success, #2ea043);
+    }
+    .toast-card.warning {
+        border-left: 4px solid var(--warning, #d29922);
+    }
+    .toast-card.danger {
+        border-left: 4px solid var(--danger, #f85149);
+    }
+
+    .toast-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .toast-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    .toast-card.info .toast-icon { color: var(--info, #58a6ff); }
+    .toast-card.success .toast-icon { color: var(--success, #2ea043); }
+    .toast-card.warning .toast-icon { color: var(--warning, #d29922); }
+    .toast-card.danger .toast-icon { color: var(--danger, #f85149); }
+
+    .toast-title {
+        font-weight: 600;
+        font-size: 0.85rem;
+        color: var(--text-color, #ededf2);
+        flex-grow: 1;
+    }
+
+    .toast-close {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        border-radius: 4px;
+        border: none;
+        background: transparent;
+        color: var(--text-muted, #9595a6);
+        cursor: pointer;
+        padding: 0;
+        transition: color 0.1s ease;
+    }
+
+    .toast-close:hover {
+        color: var(--text-color, #ededf2);
+        background-color: var(--bg-card-subtle, #22222c);
+    }
+
+    .toast-message {
+        font-size: 0.78rem;
+        color: var(--text-muted, #9595a6);
+        line-height: 1.4;
+        word-break: break-word;
+        white-space: pre-line;
+    }
+
+    .toast-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: var(--accent-primary, #0063db);
+        margin-top: 4px;
+    }
+
+    .toast-link:hover {
+        text-decoration: underline;
+    }
+
+    .toast-cancel-btn {
+        align-self: flex-start;
+        padding: 4px 8px;
+        border-radius: 4px;
+        border: 1px solid var(--border-color, #2c2c38);
+        background-color: var(--bg-button, #242430);
+        color: var(--text-color, #ededf2);
+        font-size: 0.75rem;
+        cursor: pointer;
+        margin-top: 4px;
+    }
+
+    .toast-progress {
         position: absolute;
         bottom: 0;
         left: 0;
         width: 100%;
-        appearance: none;
-        border: none;
-        border-radius: 0 0 5px 0;
-        background-color: #333;
-        overflow: hidden;
-        height: 5px;
-        margin: 0;
+        height: 3px;
+        background-color: rgba(255, 255, 255, 0.05);
     }
-    .toast .progress .bar {
-        background-color: #ccc;
-        height: 100%;
-        max-width: 100%;
-    }
-    .toast header {
-        width: 100%;
-        display: flex;
-        flex-direction: row;
-    }
-    .toast header button {
-        height: 2rem;
-        display: flex;
-        align-items: center;
-        padding: 0 5px;
-    }
-    .toast header .title {
-        flex-grow: 1;
-        font-size: 1.25rem;
-        font-weight: bold;
-        overflow-wrap: break-word;
-    }
-    .toast a, .toast button {
-        background-color: #222;
-        padding: 5px 10px;
-        border-radius: 5px;
-        color: #ccc;
-        transition: background-color 0.2s;
 
-        display: flex;
-        flex-direction: row;
-        align-items: center;
-        gap: 10px;
-    }
-    .toast a:hover {
-        background-color: #333;
-    }
-    .toast.success {
-        border-left-color: var(--success);
-    }
-    .toast.danger {
-        border-left-color: var(--danger);
-    }
-    .toast.warning {
-        border-left-color: var(--warning);
+    .toast-progress-bar {
+        height: 100%;
+        background-color: var(--accent-primary, #0063db);
+        transition: width 0.1s linear;
     }
 </style>

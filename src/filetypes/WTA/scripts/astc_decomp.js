@@ -121,7 +121,9 @@ readAsync = (filename, onload, onerror) => {
   arguments_ = process.argv.slice(2);
 
   if (typeof module != 'undefined') {
-    module['exports'] = Module;
+    try {
+      module['exports'] = Module;
+    } catch (e) {}
   }
 
   process.on('uncaughtException', function(ex) {

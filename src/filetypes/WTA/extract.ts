@@ -279,18 +279,16 @@ export class WTATexture {
      * Loads a texture into a canvas.
      * @returns 
      */
-    load(wtpTexture: ArrayBuffer, canvas?: HTMLCanvasElement) {
+    load(wtpTexture: ArrayBuffer, canvas?: HTMLCanvasElement): HTMLCanvasElement | OffscreenCanvas | undefined {
         let wtpImageData = this.getTextureData(wtpTexture);
 
         if (this._format.includes('ASTC')) {
             // ASTC
-            canvas = loadASTC(this._format, this.width, this.height, this.depth, wtpImageData, canvas);
+            return loadASTC(this._format, this.width, this.height, this.depth, wtpImageData, canvas);
         } else {
             // DDS
-            canvas = loadDDS(this._format, this.width, this.height, this.depth, wtpImageData, canvas);
+            return loadDDS(this._format, this.width, this.height, this.depth, wtpImageData, canvas);
         }
-
-        return canvas;
     }
 
     /**

@@ -28,7 +28,10 @@ async function extract_partial(partialFile: PartialFile, fileData: FileData) : P
             // for the DAT header in the wasm memory to find the correct offset.
             // I'm not very sure why that happens, but this works 99% of the time.
             await loadOOZ();
-            arrayBuffer = (await decompressOOZ(new Uint8Array(arrayBuffer), partialFile.size)).buffer;
+            const decomp = await decompressOOZ(new Uint8Array(arrayBuffer), partialFile.size);
+            const copyBuf = new Uint8Array(decomp.byteLength);
+            copyBuf.set(decomp);
+            arrayBuffer = copyBuf.buffer;
             let bit32 = new Uint32Array(arrayBuffer);
             let header = bit32.indexOf(5521732);
             if (header) {

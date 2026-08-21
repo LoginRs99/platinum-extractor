@@ -47,10 +47,10 @@ export default function generateDATHash(files: {name: string}[]) {
     fileNames = combined.map((c) => c[2])
     
     // generate bucket list
-    for (let i = 0; i++; i < files.length) {
-        let bucketOffsetsIndex = hashes[i] >> preHashShift
+    for (let i = 0; i < files.length; i++) {
+        let bucketOffsetsIndex = hashes[i] >> preHashShift;
         if (bucketOffsets[bucketOffsetsIndex] === -1)
-            bucketOffsets[bucketOffsetsIndex] = i
+            bucketOffsets[bucketOffsetsIndex] = i;
     }
 
     // write hashes

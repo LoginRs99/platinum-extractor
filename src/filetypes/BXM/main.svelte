@@ -1,105 +1,292 @@
 <script lang="ts">
-    import Loading from '../../assets/Loading.svelte';
-    import Check from "svelte-material-icons/Check.svelte";
-    import Close from "svelte-material-icons/Close.svelte";
-    import Download from "svelte-material-icons/Download.svelte";
-    import { AceEditor } from 'svelte-ace';
-    import "brace/theme/monokai";
-    import "brace/ext/searchbox";
-
+    import { CheckCircle2, XCircle, Loader2, Download, FileCode } from "@lucide/svelte";
+    import CodeEditor from "../../components/Common/CodeEditor.svelte";
+    import repackBXM from "./repack";
     import type { FileData, Node } from "./extract";
 
-    export let name: string;
-    export let data: FileData;
-    export let setUnsavedChanges: (value: boolean) => {};
+    let {
+        name,
+        data,
+        setUnsavedChanges = () => {}
+    }: {
+        name: string;
+        data: FileData;
+        fileHandler?: any;
+        setUnsavedChanges?: (value: boolean) => void;
+    } = $props();
 
-    let repackError: string|false = false;
-    let timeout = null;
-
-    function toXMLString(data: Node, depth=0) {
+    function toXMLString(node: Node, depth = 0): string {
+        if (!node) return "";
         let xml = "";
-        if (depth > 0) xml += "\n" + "\t".repeat(depth);
-        xml += `<${data.name}`;
-        for (let attr in data.attributes) {
-            xml += ` ${attr}="${data.attributes[attr]}"`;
+        if (depth > 0) xml += "\n" + "  ".repeat(depth);
+        xml += `<${node.name}`;
+        if (node.attributes) {
+            for (const attr in node.attributes) {
+                xml += ` ${attr}="${node.attributes[attr]}"`;
+            }
+        }
+        if (!node.value && (!node.children || node.children.length === 0)) {
+            xml += " />";
+            return xml;
         }
         xml += ">";
-        xml += data.value;
-        for (let child of data.children) {
-            xml += toXMLString(child, depth + 1);
+        if (node.value) {
+            xml += node.value;
         }
-        if (data.children.length) xml += "\n" + "\t".repeat(depth);
-        xml += `</${data.name}>`;
+        if (node.children && node.children.length > 0) {
+            for (const child of node.children) {
+                xml += toXMLString(child, depth + 1);
+            }
+            xml += "\n" + "  ".repeat(depth);
+        }
+        xml += `</${node.name}>`;
         return xml;
     }
 
-    let originalValue = "";
-    let value = "";
+    let originalXML = $derived(data && data.data ? toXMLString(data.data) : "");
+    let currentXML = $state("");
+    let repackError: string | null | false = $state(false);
+    let isInitialized = $state(false);
 
-    $: {
-        originalValue = toXMLString(data.data);
-        value = originalValue;
+    $effect(() => {
+        if (originalXML && !isInitialized) {
+            currentXML = originalXML;
+            isInitialized = true;
+            validateXML(currentXML);
+        }
+    });
+
+    function validateXML(xmlText: string) {
+        if (!xmlText.trim()) {
+            repackError = "Document is empty";
+            return false;
+        }
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(xmlText, "text/xml");
+        const parseError = doc.querySelector("parsererror");
+        if (parseError) {
+            repackError = parseError.textContent || "XML syntax error";
+            return false;
+        }
+        repackError = false;
+        return true;
     }
 
-    function parse(detail: string) {
-        // check repackability
-        let parser = new DOMParser();
-        let doc = parser.parseFromString(detail.replace("&", "&amp;"), "text/xml");
-        let parseError = doc.querySelector('parsererror > div');
-        repackError = parseError ? parseError.textContent : false;
-    }
-
-    function handleChange(e) {
-        value = e.detail;
+    function handleCodeChange(newVal: string) {
+        currentXML = newVal;
         setUnsavedChanges(true);
+        validateXML(newVal);
+    }
 
-        // HACK: This function currently has no way of detecting whether it's a new file being
-        // loaded or not, so it just runs it every time. This sorta hurts performance unnecessarily,
-        // but I don't know how to fix it.
-        if (value.length === 0 || e.detail.length === 0 || originalValue.length === e.detail.length) {
-            if (timeout) clearTimeout(timeout);
-            parse(e.detail);
+    function xmlToNode(elem: Element): Node {
+        const attributes: Record<string, string> = {};
+        for (let i = 0; i < elem.attributes.length; i++) {
+            const attr = elem.attributes[i];
+            attributes[attr.name] = attr.value;
+        }
+        const children: Node[] = [];
+        let value = "";
+        for (let i = 0; i < elem.childNodes.length; i++) {
+            const child = elem.childNodes[i];
+            if (child.nodeType === 1) {
+                // Element
+                children.push(xmlToNode(child as Element));
+            } else if (child.nodeType === 3) {
+                // Text
+                value += child.nodeValue || "";
+            }
+        }
+        return {
+            name: elem.tagName,
+            value: value.trim(),
+            attributes,
+            children
+        };
+    }
+
+    export function save(): FileData | false {
+        if (!validateXML(currentXML)) return false;
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(currentXML, "text/xml");
+            const rootNode = xmlToNode(doc.documentElement);
+            const newData: FileData = {
+                data: rootNode,
+                encoding: data.encoding || "UTF-8"
+            };
+            return newData;
+        } catch {
+            return false;
+        }
+    }
+
+    async function downloadBXM() {
+        const saved = save();
+        if (!saved) {
+            alert("Please fix XML errors before exporting.");
             return;
         }
-        repackError = null;
-        clearTimeout(timeout);
-        timeout = setTimeout(parse.bind(null, e.detail), 1000);
+        const arrayBuffer = repackBXM(saved);
+        const blob = new Blob([arrayBuffer], { type: "application/octet-stream" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = name.endsWith(".bxm") ? name : `${name}.bxm`;
+        a.click();
+        URL.revokeObjectURL(url);
     }
 
-    export function save() {
-        parse(value);
-        if (repackError) return false;
-
-        let newValue = value.replace(/\r/, '').replace(/(\n)/, "\r\n");
-        return { data: newValue };
-        // update logic here
-        //loadedFile.update(value => { value.modified = true; return value });
+    function downloadXML() {
+        const blob = new Blob([currentXML], { type: "text/xml;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = name.replace(/\.bxm$/i, "") + ".xml";
+        a.click();
+        URL.revokeObjectURL(url);
     }
 </script>
-<header class="repackChecker">
-    {#if (repackError === null)}
-    <Loading />
-    <span>Checking if you can repack this file...</span>
-    {:else if (repackError === false)}
-    <Check width="32px" height="32px" />
-    <span><b>Editing {name}.</b></span>
-    {:else}
-    <Close width="32px" height="32px" />
-    <span><b>There are errors in this version of {name} that prevent you from repacking.</b> {repackError}</span>
-    {/if}
-    <button class="repack"><Download /> Download</button>
-</header>
-<AceEditor
-    theme="monokai"
-    lang=""
-    on:init={(e) => { e.detail.setShowPrintMargin(false); e.detail.setFontSize("16px")}}
-    on:input={handleChange}
-    value={originalValue}
-/>
+
+<div class="bxm-editor">
+    <header class="editor-header">
+        <div class="status-indicator">
+            {#if repackError === null}
+                <Loader2 size={18} class="spin text-info" />
+                <span>Checking XML structure...</span>
+            {:else if repackError === false}
+                <CheckCircle2 size={18} class="text-success" />
+                <span class="status-text">Valid XML &bull; Ready to repack ({data.encoding || 'SHIFT-JIS'})</span>
+            {:else}
+                <XCircle size={18} class="text-danger" />
+                <span class="status-text text-danger" title={repackError}>XML Error: {repackError}</span>
+            {/if}
+        </div>
+
+        <div class="actions">
+            <button class="action-btn" onclick={downloadXML} title="Download as readable XML">
+                <FileCode size={15} />
+                <span>Export XML</span>
+            </button>
+            <button class="action-btn primary" onclick={downloadBXM} disabled={repackError !== false} title="Repack to binary BXM and download">
+                <Download size={15} />
+                <span>Repack BXM</span>
+            </button>
+        </div>
+    </header>
+
+    <div class="editor-body">
+        <CodeEditor
+            value={currentXML}
+            language="markup"
+            onchange={handleCodeChange}
+        />
+    </div>
+</div>
 
 <style>
-    /* other codejar styles are in app.css since they are not directly in this component */
-    .repackChecker span {
+    .bxm-editor {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        height: 100%;
+        padding: 12px;
+        box-sizing: border-box;
+        gap: 10px;
+    }
+
+    .editor-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 14px;
+        background-color: var(--card-bg, #1e1e24);
+        border: 1px solid var(--border-color, #2e2e36);
+        border-radius: 8px;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+
+    .status-indicator {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.85rem;
         flex-grow: 1;
+        min-width: 200px;
+    }
+
+    .status-text {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 500px;
+    }
+
+    .actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .action-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border-radius: 6px;
+        border: 1px solid var(--border-color, #3a3a48);
+        background-color: var(--button-bg, #272732);
+        color: var(--text-color, #e0e0e8);
+        font-size: 0.8rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .action-btn:hover:not(:disabled) {
+        background-color: var(--button-hover-bg, #333342);
+        border-color: var(--accent-color, #5865f2);
+    }
+
+    .action-btn.primary {
+        background-color: #0063db;
+        border-color: #0056bf;
+        color: #ffffff;
+    }
+
+    .action-btn.primary:hover:not(:disabled) {
+        background-color: #0056bf;
+    }
+
+    .action-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .editor-body {
+        flex-grow: 1;
+        height: calc(100% - 58px);
+        overflow: hidden;
+    }
+
+    :global(.text-success) {
+        color: #57f287;
+    }
+
+    :global(.text-danger) {
+        color: #ed4245;
+    }
+
+    :global(.text-info) {
+        color: #58a6ff;
+    }
+
+    :global(.spin) {
+        animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
     }
 </style>

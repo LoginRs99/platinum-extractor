@@ -1,28 +1,50 @@
 import './app.css'
+import { mount } from 'svelte'
 import App from './App.svelte'
 import { addToast } from './components/Toasts/ToastStore'
 
-const app = new App({
-  target: document.getElementById('app')
-})
+const target = document.getElementById('app')
+if (!target) {
+  throw new Error('Target container #app not found')
+}
 
-// Error handling
-window.onunhandledrejection = (ev) => {
-  let msg = ev.reason.stack;
+const app = mount(App, { target })
 
-  let githubBody = `**Beep boop, Error report! Created ${new Date().toUTCString()}**\n\n${ev.reason.stack}\n\nRunning with ${navigator.userAgent} on ${navigator.platform}\n\n---\n\n**Describe what you were doing when this error occurred, whether it was severe or not, or any other details about this bug (so I can fix it):**`
+// Unhandled error & rejection handling with one-click report generator
+window.onunhandledrejection = (ev: PromiseRejectionEvent) => {
+  const reason = ev.reason;
+  const msg = reason?.stack || reason?.message || String(reason);
+
+  const githubBody = `**Bug Report (Platinum Extractor v2.0)**
+Date: ${new Date().toUTCString()}
+Browser: ${navigator.userAgent}
+Platform: ${navigator.platform}
+
+\`\`\`
+${msg}
+\`\`\`
+
+---
+**Steps to reproduce:**
+1. 
+2. `;
 
   addToast({
-      type: 'danger',
-      title: '😟 An error occurred',
-      message: msg,
-      link: {
-          text: 'Report issue (if it\'s severe)',
-          href: `https://github.com/cabalex/platinum-extractor/issues/new?title=${encodeURIComponent("Error: " + ev.reason.message)}&body=${encodeURIComponent(githubBody)}`
-      }
+    type: 'danger',
+    title: 'An error occurred',
+    message: reason?.message || 'An unexpected error occurred during extraction.',
+    timeout: 12000,
+    link: {
+      text: 'Report Issue',
+      href: `https://github.com/LoginRs99/platinum-extractor/issues/new?title=${encodeURIComponent("Error: " + (reason?.message || "Unhandled error"))}&body=${encodeURIComponent(githubBody)}`
+    }
   });
 
   return true;
+}
+
+window.onerror = (message, source, lineno, colno, error) => {
+  console.error("Global error caught:", message, source, lineno, colno, error);
 }
 
 export default app

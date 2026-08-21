@@ -1,65 +1,109 @@
 <script lang="ts">
+    import { ChevronLeft, ChevronRight } from "@lucide/svelte";
     import Unloaded from "./Unloaded.svelte";
     import { componentTabs } from "./MainStore";
     import MainTab from "./components/MainTab.svelte";
     import MainBody from "./components/MainBody.svelte";
+    import type FileHandler from "../../lib/FileHandler";
 
-    export let fileHandler;
+    let { fileHandler }: { fileHandler: FileHandler } = $props();
 
-    // since you can't scroll horizontally with the mouse wheel by default
-    function handleTabsScroll(e) {
-        e.currentTarget.scrollLeft += e.deltaY;
+    let tabsHeader: HTMLElement | undefined = $state();
+
+    function handleTabsScroll(e: WheelEvent) {
+        if (tabsHeader) {
+            tabsHeader.scrollLeft += e.deltaY;
+        }
+    }
+
+    function scrollTabsLeft() {
+        if (tabsHeader) {
+            tabsHeader.scrollBy({ left: -150, behavior: "smooth" });
+        }
+    }
+
+    function scrollTabsRight() {
+        if (tabsHeader) {
+            tabsHeader.scrollBy({ left: 150, behavior: "smooth" });
+        }
     }
 </script>
-<div class="mainApp">
-    <header class="tabs" on:wheel={handleTabsScroll}>
-        {#each $componentTabs as tab, i}
-            {#key tab.name}
-            <MainTab i={i} tab={tab} />
-            {/key}
-        {/each}
-    </header>
-    {#if $componentTabs.length}
-        {#each $componentTabs as tab, i}
-            {#key tab.name}
-            <MainBody i={i} tab={tab} fileHandler={fileHandler} />
-            {/key}
-        {/each}
+
+<div class="main-workspace">
+    {#if $componentTabs.length > 0}
+        <div class="tabs-bar">
+            <header
+                class="tabs-container"
+                bind:this={tabsHeader}
+                onwheel={handleTabsScroll}
+                role="tablist"
+                aria-label="Open files tabs"
+            >
+                {#each $componentTabs as tab, i (tab.name + i)}
+                    <MainTab {i} {tab} />
+                {/each}
+            </header>
+        </div>
+
+        <div class="workspace-body">
+            {#each $componentTabs as tab, i (tab.name + i)}
+                <MainBody {i} {tab} {fileHandler} />
+            {/each}
+        </div>
     {:else}
-        <main>
+        <main class="empty-workspace">
             <Unloaded />
         </main>
     {/if}
 </div>
 
 <style>
-    main {
+    .main-workspace {
         display: flex;
         flex-direction: column;
-        align-items: center;
-        justify-content: center;
         flex-grow: 1;
-        overflow: hidden;
-    }
-    .mainApp {
-        display: flex;
-        flex-direction: column;
         height: 100%;
         width: 100%;
+        overflow: hidden;
+        background-color: var(--bg-app, #121217);
     }
-    .tabs {
+
+    .tabs-bar {
+        display: flex;
+        align-items: center;
+        height: var(--header-height, 48px);
+        background-color: var(--bg-toolbar, #16161d);
+        border-bottom: 1px solid var(--border-color, #2c2c38);
+        flex-shrink: 0;
+        overflow: hidden;
+    }
+
+    .tabs-container {
         display: flex;
         align-items: stretch;
-        background-color: #111;
-        justify-content: flex-start;
-        height: 40px;
-        width: calc(100vw - 300px); /* hack so that the scrollbar will appear */
+        height: 100%;
+        flex-grow: 1;
+        overflow-x: auto;
+        overflow-y: hidden;
+    }
+
+    .tabs-container::-webkit-scrollbar {
+        height: 2px;
+    }
+
+    .tabs-container::-webkit-scrollbar-thumb {
+        background-color: var(--border-color, #2c2c38);
+    }
+
+    .workspace-body {
+        flex-grow: 1;
+        height: calc(100% - var(--header-height, 48px));
+        overflow: hidden;
+    }
+
+    .empty-workspace {
+        flex-grow: 1;
+        height: 100%;
         overflow-y: auto;
-    }
-    .tabs::-webkit-scrollbar-thumb {
-        background-color: #444;
-    }
-    .tabs::-webkit-scrollbar {
-        height: 3px;
     }
 </style>

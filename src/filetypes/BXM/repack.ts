@@ -65,6 +65,7 @@ function repack(data: FileData) : ArrayBuffer {
             readTree(input.children[i], startChildren+i);
         }
     }
+    if (!data.data) return new ArrayBuffer(0);
     readTree(data.data, 0);
     // Construct the BXM file
     // BXMs are big endian!!

@@ -1,43 +1,33 @@
 {
-  "name": "app",
+  "name": "platinum-extractor",
   "private": true,
-  "version": "0.0.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "check": "svelte-check --tsconfig ./tsconfig.json"
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "vitest run"
   },
   "dependencies": {
-    "@cabalex/platinum-extract": "file:./dist",
+    "@lucide/svelte": "^1.33.0",
     "@oneidentity/zstd-js": "^1.0.3",
-    "@sveltejs/svelte-virtual-list": "^3.0.1",
     "encoding-japanese": "^2.0.0",
     "jszip": "^3.10.1",
     "ooz-wasm": "^1.0.1",
-    "svelte-ace": "^1.0.21",
-    "svelte-material-icons": "^2.0.4",
-    "twgl.js": "^5.3.1"
+    "prismjs": "^1.29.0",
+    "twgl.js": "^5.5.4"
   },
   "devDependencies": {
-    "@rollup/plugin-node-resolve": "^15.0.1",
-    "@sveltejs/vite-plugin-svelte": "^1.1.0",
-    "@tsconfig/svelte": "^3.0.0",
-    "rollup-plugin-node-builtins": "^2.1.2",
-    "svelte": "^3.52.0",
-    "svelte-check": "^2.9.2",
-    "svelte-preprocess": "^4.10.7",
-    "tslib": "^2.4.0",
-    "typescript": "^4.6.4",
-    "vite": "^3.2.2",
-    "vite-plugin-top-level-await": "^1.2.1",
-    "vite-plugin-wasm": "^3.1.0",
-    "vite-plugin-wasm-pack": "^0.1.12"
-  },
-  "browser": {
-    "fs": false,
-    "path": false,
-    "os": false
+    "@sveltejs/vite-plugin-svelte": "^5.0.3",
+    "@tsconfig/svelte": "^5.0.4",
+    "@types/node": "^22.13.9",
+    "@types/prismjs": "^1.26.5",
+    "svelte": "^5.22.4",
+    "svelte-check": "^4.1.4",
+    "typescript": "^5.8.2",
+    "vite": "^6.2.0",
+    "vitest": "^3.0.7"
   }
 }
