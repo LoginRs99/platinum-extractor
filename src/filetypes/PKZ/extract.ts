@@ -9,7 +9,7 @@ export interface PartialFile {
 }
 
 export interface FileData {
-    baseFile: File|ArrayBuffer,
+    baseFile: File | Blob | ArrayBuffer,
     files: Array<PartialFile>,
 }
 

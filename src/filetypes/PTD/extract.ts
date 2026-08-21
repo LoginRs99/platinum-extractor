@@ -4,6 +4,7 @@ export interface PTDEntry {
     id: number;
     key?: string;
     text: string;
+    offset?: string;
 }
 
 export interface FileData {
@@ -18,7 +19,6 @@ export function decodePTDString(bytes: Uint8Array, shiftKey: number = 0x26): str
         unshifted[i] = (bytes[i] - shiftKey + 256) % 256;
     }
 
-    // Trim trailing UTF-16 null characters (0x00 0x00)
     let len = unshifted.length;
     while (len >= 2 && unshifted[len - 1] === 0 && unshifted[len - 2] === 0) {
         len -= 2;
@@ -49,63 +49,32 @@ async function extract(file: PlatinumFileReader): Promise<FileData> {
     );
 
     const shiftKey = view.getUint32(8, true) || 0x26;
+    const stringDataPos = view.getUint32(24, true);
+    const startScan = (stringDataPos > 28 && stringDataPos < uint8View.length) ? stringDataPos : 28;
     const entries: PTDEntry[] = [];
 
-    const count = view.getUint32(12, true);
-    const tableOffset = view.getUint32(16, true) || 28;
-    const stringDataPos = view.getUint32(24, true) || (tableOffset + count * 16);
+    // Scan all null-terminated UTF-16LE strings shifted by shiftKey
+    let entryIdx = 0;
+    for (let i = startScan; i < uint8View.length - 2; i += 2) {
+        // In shifted UTF-16LE, a null character (0x00 0x00) is (shiftKey, shiftKey)
+        if (uint8View[i] !== shiftKey || uint8View[i + 1] !== shiftKey) {
+            let start = i;
+            while (i < uint8View.length - 1 && !(uint8View[i] === shiftKey && uint8View[i + 1] === shiftKey)) {
+                i += 2;
+            }
+            const rawBytes = uint8View.slice(start, i);
+            const text = decodePTDString(rawBytes, shiftKey);
 
-    if (count > 0 && tableOffset < arrayBuffer.byteLength) {
-        let textPtr = stringDataPos;
-
-        for (let i = 0; i < count; i++) {
-            const entryPos = tableOffset + i * 16;
-            if (entryPos + 16 > arrayBuffer.byteLength) break;
-
-            const id = view.getUint32(entryPos, true);
-            const charLength = view.getUint32(entryPos + 8, true);
-            const byteLength = view.getUint32(entryPos + 12, true) || ((charLength + 1) * 2);
-
-            if (textPtr + byteLength <= arrayBuffer.byteLength) {
-                const rawBytes = uint8View.slice(textPtr, textPtr + byteLength);
-                const text = decodePTDString(rawBytes, shiftKey);
-
+            // Filter out binary table garbage and keep real strings
+            if (text.length >= 1 && !text.includes('\u0000') && !/^[\x00-\x1F\x7F\uD800-\uDFFF\uFDD0-\uFDEF]+$/.test(text)) {
                 entries.push({
-                    id,
-                    key: `Entry_${id}`,
+                    id: entryIdx,
+                    key: `String_${entryIdx}`,
+                    offset: `0x${start.toString(16)}`,
                     text
                 });
-                textPtr += byteLength;
+                entryIdx++;
             }
-        }
-    }
-
-    // Fallback: If header table didn't parse entries, scan for UTF-16 null-terminated strings with 0x26 shift
-    if (entries.length === 0) {
-        let pos = 28;
-        let entryIdx = 0;
-
-        while (pos + 4 < arrayBuffer.byteLength) {
-            // Null terminator in shifted UTF-16LE is [shiftKey, shiftKey]
-            let start = pos;
-            while (pos + 1 < arrayBuffer.byteLength && !(uint8View[pos] === shiftKey && uint8View[pos + 1] === shiftKey)) {
-                pos += 2;
-            }
-
-            const strByteLen = (pos + 2) - start;
-            if (strByteLen >= 4) {
-                const rawBytes = uint8View.slice(start, pos + 2);
-                const text = decodePTDString(rawBytes, shiftKey);
-                if (text.trim().length > 0 && !/^[\x00-\x1F\x7F]+$/.test(text)) {
-                    entries.push({
-                        id: entryIdx,
-                        key: `String_${entryIdx}`,
-                        text
-                    });
-                    entryIdx++;
-                }
-            }
-            pos += 2; // skip null terminator
         }
     }
 

@@ -1,7 +1,7 @@
 export default class PlatinumFileReader {
-    file: File|ArrayBuffer;
+    file: File|Blob|ArrayBuffer;
     
-    constructor(fileBuffer: File|ArrayBuffer) {
+    constructor(fileBuffer: File|Blob|ArrayBuffer) {
         this.file = fileBuffer;
     }
 
@@ -11,13 +11,21 @@ export default class PlatinumFileReader {
      * @param end (optional)
      * @returns ArrayBuffer
      */
-    read(start?: number, end?: number): Promise<ArrayBuffer> {
+    async read(start?: number, end?: number): Promise<ArrayBuffer> {
+        if (this.file instanceof ArrayBuffer) {
+            return this.file.slice(start, end);
+        }
+
+        if (this.file && typeof (this.file as Blob).arrayBuffer === 'function') {
+            const sliced = (this.file as Blob).slice(start, end);
+            return await sliced.arrayBuffer();
+        }
+
         return new Promise((resolve, reject) => {
-            if (this.file instanceof ArrayBuffer) {
-                resolve(this.file.slice(start, end));
+            if (typeof FileReader === 'undefined') {
+                reject(new Error('FileReader is not defined in this environment'));
                 return;
             }
-
             const reader = new FileReader();
             reader.onload = () => {
                 resolve(reader.result as ArrayBuffer);
@@ -25,17 +33,25 @@ export default class PlatinumFileReader {
             reader.onerror = () => {
                 reject(reader.error);
             };
-            reader.readAsArrayBuffer(this.file.slice(start, end));
+            reader.readAsArrayBuffer((this.file as Blob).slice(start, end));
         });
     }
 
-    readString(start?: number, end?: number): Promise<string> {
+    async readString(start?: number, end?: number): Promise<string> {
+        if (this.file instanceof ArrayBuffer) {
+            return new TextDecoder().decode(this.file.slice(start, end));
+        }
+
+        if (this.file && typeof (this.file as Blob).text === 'function') {
+            const sliced = (this.file as Blob).slice(start, end);
+            return await sliced.text();
+        }
+
         return new Promise((resolve, reject) => {
-            if (this.file instanceof ArrayBuffer) {
-                resolve(new TextDecoder().decode(this.file.slice(start, end)));
+            if (typeof FileReader === 'undefined') {
+                reject(new Error('FileReader is not defined in this environment'));
                 return;
             }
-
             const reader = new FileReader();
             reader.onload = () => {
                 resolve(reader.result as string);
@@ -43,7 +59,7 @@ export default class PlatinumFileReader {
             reader.onerror = () => {
                 reject(reader.error);
             };
-            reader.readAsText(this.file.slice(start, end));
+            reader.readAsText((this.file as Blob).slice(start, end));
         });
     }
 

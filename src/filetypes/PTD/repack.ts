@@ -1,7 +1,6 @@
 import type { FileData, PTDEntry } from "./extract";
 
 function encodePTDString(str: string, shiftKey: number = 0x26): Uint8Array {
-    // UTF-16LE encoding with trailing null character
     const len = str.length;
     const bytes = new Uint8Array((len + 1) * 2);
 
@@ -13,7 +12,7 @@ function encodePTDString(str: string, shiftKey: number = 0x26): Uint8Array {
         bytes[i * 2 + 1] = (high + shiftKey) % 256;
     }
 
-    // Trailing null terminator (0x00 0x00 shifted)
+    // Trailing null terminator (0x00 0x00 shifted by shiftKey)
     bytes[len * 2] = (0 + shiftKey) % 256;
     bytes[len * 2 + 1] = (0 + shiftKey) % 256;
 
@@ -51,6 +50,9 @@ async function repack(data: FileData | any): Promise<ArrayBuffer> {
     const buffer = new ArrayBuffer(alignedSize);
     const view = new DataView(buffer);
     const uint8View = new Uint8Array(buffer);
+
+    // Initialize buffer with shifted null bytes (shiftKey)
+    uint8View.fill(shiftKey);
 
     // 1. Magic 'PTD\0'
     view.setUint8(0, 0x50); // 'P'
