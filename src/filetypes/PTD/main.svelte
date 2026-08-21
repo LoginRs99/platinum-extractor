@@ -104,27 +104,56 @@
         reader.onload = () => {
             try {
                 const parsed = JSON.parse(reader.result as string);
+                let importedEntries: PTDEntry[] = [];
+
                 if (parsed && Array.isArray(parsed.entries)) {
-                    ptdData.entries = parsed.entries;
+                    importedEntries = parsed.entries;
                 } else if (Array.isArray(parsed)) {
-                    ptdData.entries = parsed;
+                    importedEntries = parsed;
                 } else if (typeof parsed === "object") {
-                    const entries: PTDEntry[] = [];
                     let idx = 0;
                     for (const [k, v] of Object.entries(parsed)) {
                         if (typeof v === "string") {
-                            entries.push({ id: idx++, key: k, text: v });
+                            importedEntries.push({ id: idx++, key: k, text: v });
                         }
                     }
-                    if (entries.length > 0) {
-                        ptdData.entries = entries;
+                }
+
+                if (importedEntries.length === 0) {
+                    addToast({
+                        type: "warning",
+                        title: "Empty JSON",
+                        message: "No valid text entries found in the imported JSON file."
+                    });
+                    return;
+                }
+
+                const currentCount = ptdData.entries.length;
+                const importedCount = importedEntries.length;
+
+                if (currentCount > 0 && importedCount !== currentCount) {
+                    const confirmed = confirm(
+                        `Entry Count Mismatch:\n` +
+                        `The imported file contains ${importedCount} entries, but the currently loaded file has ${currentCount} entries.\n\n` +
+                        `Note: Structured binary repacking requires an exact entry count match.\n\n` +
+                        `Do you want to import anyway?`
+                    );
+                    if (!confirmed) {
+                        addToast({
+                            type: "info",
+                            title: "Import Cancelled",
+                            message: "JSON import was cancelled due to entry count mismatch."
+                        });
+                        return;
                     }
                 }
+
+                ptdData.entries = importedEntries;
                 setUnsavedChanges(true);
                 addToast({
-                    type: "info",
+                    type: "success",
                     title: "JSON Imported",
-                    message: `Imported ${ptdData.entries.length} entries into ${name}`
+                    message: `Successfully imported ${importedEntries.length} entries into ${name}`
                 });
             } catch (err: any) {
                 addToast({

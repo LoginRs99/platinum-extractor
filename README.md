@@ -23,6 +23,7 @@
 - **WASM Decompression Pipeline:** Hardware-accelerated Zstandard (`@oneidentity/zstd-js`) and Oodle Kraken (`ooz-wasm`) decompression for Switch/PC archives.
 - **Hardware-Accelerated WebGL Texture Previews:** Real-time WebGL rendering of DDS (`DXT1`, `DXT3`, `DXT5`, `BC6H`, `BC7`) and WASM ASTC textures (`4x4` through `12x12`), including Tegra X1 block-linear deswizzling for Nintendo Switch dumps.
 - **Interactive Editors:**
+  - **PTD Text Editor:** Dialogue, subtitle, and system text dictionary editor with UTF-16LE Caesar shift encoding, structured/fallback extraction, and JSON translation export/import.
   - **BXM Editor:** Binary XML tree visualizer with real-time XML syntax validation, formatting, and binary repacking.
   - **CSV Editor:** Dual spreadsheet table view and raw text editor with Shift-JIS / UTF-8 encoding support.
   - **Collision Viewer (COL):** Direct integration guidance for 3D editing with the *NieR2Blender2NieR* Blender add-on.
@@ -32,6 +33,7 @@
   - Full WCAG AA accessibility with keyboard tree navigation (`role="tree"`, `role="treeitem"`, `aria-selected`).
   - Drag-and-drop file and directory import.
   - Bulk ZIP export for texture archives.
+  - In-app PKZ archive repacking with hardware-accelerated ZStandard compression.
   - Zero external runtime CDN dependencies (bundled local Prism & vector icons).
 - **Regression Safety Net:** Automated Vitest unit & round-trip binary tests running on CI.
 
@@ -65,12 +67,24 @@
 ## 📦 Supported Formats
 
 - **`DAT` / `DTT` / `EVN`:** PlatinumGames signature archive container format (with 16-byte alignment and CRC32 bucket hashing).
-- **`PKZ`:** High-compression archive container (ZStandard / Oodle Kraken).
+- **`PKZ`:** High-compression archive container (ZStandard / Oodle Kraken) with full in-browser repacking.
+- **`PTD` (`.bin` / `.ptd`):** Binary text, subtitle, and dialogue dictionary format (`PTD\0`) with UTF-16LE Caesar shift decoding, JSON translation export/import, and in-place binary compilation.
 - **`BXM`:** Big-endian binary XML configuration files (`BXM\0`, `XML\0`).
 - **`CSV`:** Shift-JIS & UTF-8 encoded configuration and balance tables.
 - **`WTA` / `WTP`:** Texture header and surface container format.
 - **`MCD`:** UI layout, glyph, and event dialogue archives.
 - **`COL` / `COL2`:** 3D collision boundaries.
+
+---
+
+### 📝 PTD Text Archive Support (Community Reverse-Engineered / Experimental)
+
+PlatinumGames PTD binary text archives (commonly found in *Astral Chain* `.bin` text files) store game dialogues, subtitles, and system dictionaries. PTD parsing in this project is community-reverse-engineered (not officially documented) based on research from [Kerilk/bayonetta_tools](https://github.com/Kerilk/bayonetta_tools) and Astral Chain reverse-engineering forum research.
+
+It features:
+- **Structured & Fallback Parsing:** High-fidelity parser with automated fallback heuristic scanner for non-standard variations.
+- **Translation Workflow:** In-browser JSON export and import with entry-count validation and mismatch warnings.
+- **In-Place Binary Compilation:** Structured binary repacking preserving group IDs, character descriptors, hash tables, and section offsets.
 
 ---
 

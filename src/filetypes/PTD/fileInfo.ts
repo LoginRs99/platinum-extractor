@@ -4,5 +4,5 @@ export default {
     ext: ["bin", "ptd"],
     magic: ["PTD\x00", "PTD"],
     icon: "file-text",
-    credits: "Format reverse-engineered by Astral Chain & PlatinumGames modding communities"
+    credits: "Format reverse-engineered by the PlatinumGames modding community (Kerilk's bayonetta_tools research, Astral Chain reverse-engineering community, and LoginRs99)"
 };
