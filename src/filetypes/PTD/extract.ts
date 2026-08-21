@@ -2,7 +2,7 @@ import type PlatinumFileReader from "../../lib/PlatinumFileReader";
 
 export interface PTDEntry {
     id: number;
-    hash: string;
+    hash?: string;
     key?: string;
     text: string;
 }

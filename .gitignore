@@ -25,3 +25,7 @@ dist-ssr
 
 # old/testing
 src-old/
+
+# Astral Chain translation & game archives
+astral_chain_translation/
+*.pkz
