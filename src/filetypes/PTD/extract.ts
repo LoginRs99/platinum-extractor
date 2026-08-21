@@ -2,28 +2,36 @@ import type PlatinumFileReader from "../../lib/PlatinumFileReader";
 
 export interface PTDEntry {
     id: number;
+    hash: string;
     key?: string;
     text: string;
-    offset?: string;
 }
 
 export interface FileData {
     magic: string;
     shiftKey: number;
     entries: PTDEntry[];
+    rawPrefix?: Uint8Array;
+    rawSuffix?: Uint8Array;
+    headerInfo?: {
+        stringDataPos: number;
+        hasGroupId: boolean;
+        groupCount: number;
+        textCount: number;
+        charNameCount: number;
+        textDataPos: number;
+    };
 }
 
-export function decodePTDString(bytes: Uint8Array, shiftKey: number = 0x26): string {
+export function decodeString(bytes: Uint8Array, shiftKey = 0x26): string {
     const unshifted = new Uint8Array(bytes.length);
     for (let i = 0; i < bytes.length; i++) {
         unshifted[i] = (bytes[i] - shiftKey + 256) % 256;
     }
-
     let len = unshifted.length;
     while (len >= 2 && unshifted[len - 1] === 0 && unshifted[len - 2] === 0) {
         len -= 2;
     }
-
     const decoder = new TextDecoder("utf-16le");
     return decoder.decode(unshifted.slice(0, len));
 }
@@ -49,40 +57,113 @@ async function extract(file: PlatinumFileReader): Promise<FileData> {
     );
 
     const shiftKey = view.getUint32(8, true) || 0x26;
+    const hashCount = view.getUint32(12, true);
+    const hashDataPos = view.getUint32(16, true);
     const stringDataPos = view.getUint32(24, true);
-    const startScan = (stringDataPos > 28 && stringDataPos < uint8View.length) ? stringDataPos : 28;
-    const entries: PTDEntry[] = [];
 
-    // Scan all null-terminated UTF-16LE strings shifted by shiftKey
-    let entryIdx = 0;
-    for (let i = startScan; i < uint8View.length - 2; i += 2) {
-        // In shifted UTF-16LE, a null character (0x00 0x00) is (shiftKey, shiftKey)
-        if (uint8View[i] !== shiftKey || uint8View[i + 1] !== shiftKey) {
-            let start = i;
-            while (i < uint8View.length - 1 && !(uint8View[i] === shiftKey && uint8View[i + 1] === shiftKey)) {
-                i += 2;
-            }
-            const rawBytes = uint8View.slice(start, i);
-            const text = decodePTDString(rawBytes, shiftKey);
+    try {
+        // 1. Read hash table (key names)
+        const hashNames: Record<string, string> = {};
+        let hashNamePos = hashDataPos + hashCount * 16;
+        for (let i = 0; i < hashCount; i++) {
+            const p = hashDataPos + i * 16;
+            const hash = view.getUint32(p, true).toString(16).padStart(8, '0');
+            const byteLength = view.getUint32(p + 12, true);
 
-            // Filter out binary table garbage and keep real strings
-            if (text.length >= 1 && !text.includes('\u0000') && !/^[\x00-\x1F\x7F\uD800-\uDFFF\uFDD0-\uFDEF]+$/.test(text)) {
-                entries.push({
-                    id: entryIdx,
-                    key: `String_${entryIdx}`,
-                    offset: `0x${start.toString(16)}`,
-                    text
-                });
-                entryIdx++;
+            if (hashNamePos + byteLength <= arrayBuffer.byteLength) {
+                const name = decodeString(uint8View.slice(hashNamePos, hashNamePos + byteLength), shiftKey);
+                hashNames[hash] = name;
+                hashNamePos += byteLength;
             }
         }
-    }
 
-    return {
-        magic,
-        shiftKey,
-        entries
-    };
+        // 2. Read section headers at stringDataPos
+        let cur = stringDataPos;
+        const hasGroupId = view.getUint32(cur + 4, true) === 1;
+        cur += 20;
+
+        let groupCount = 0;
+        if (hasGroupId) {
+            groupCount = view.getUint32(cur + 4, true);
+            cur += 12 + groupCount * 4;
+        }
+
+        const textCount = view.getUint32(cur + 4, true);
+        cur += 12; // Text header
+
+        const charNameCount = view.getUint32(cur + 4, true);
+        cur += 12; // CharName header
+
+        const textDataPos = cur;
+        const textDescriptorsEnd = textDataPos + textCount * 16;
+
+        let textPtr = textDescriptorsEnd;
+        const entries: PTDEntry[] = [];
+        for (let i = 0; i < textCount; i++) {
+            const p = textDataPos + i * 16;
+            const hash = view.getUint32(p, true).toString(16).padStart(8, '0');
+            const byteLen = view.getUint32(p + 12, true);
+
+            const text = decodeString(uint8View.slice(textPtr, textPtr + byteLen), shiftKey);
+            const key = hashNames[hash] || `Key_${hash}`;
+
+            entries.push({
+                id: i,
+                hash,
+                key,
+                text
+            });
+            textPtr += byteLen;
+        }
+
+        const rawPrefix = uint8View.slice(0, textDescriptorsEnd);
+        const rawSuffix = uint8View.slice(textPtr);
+
+        return {
+            magic,
+            shiftKey,
+            entries,
+            rawPrefix,
+            rawSuffix,
+            headerInfo: {
+                stringDataPos,
+                hasGroupId,
+                groupCount,
+                textCount,
+                charNameCount,
+                textDataPos
+            }
+        };
+    } catch (err) {
+        console.warn("Structured parser fallback:", err);
+        // Fallback simple scanner
+        const entries: PTDEntry[] = [];
+        let entryIdx = 0;
+        for (let i = 28; i < uint8View.length - 2; i += 2) {
+            if (uint8View[i] !== shiftKey || uint8View[i + 1] !== shiftKey) {
+                let start = i;
+                while (i < uint8View.length - 1 && !(uint8View[i] === shiftKey && uint8View[i + 1] === shiftKey)) {
+                    i += 2;
+                }
+                const rawBytes = uint8View.slice(start, i);
+                const text = decodeString(rawBytes, shiftKey);
+                if (text.length >= 1 && !text.includes('\u0000')) {
+                    entries.push({
+                        id: entryIdx,
+                        hash: `entry_${entryIdx}`,
+                        key: `String_${entryIdx}`,
+                        text
+                    });
+                    entryIdx++;
+                }
+            }
+        }
+        return {
+            magic,
+            shiftKey,
+            entries
+        };
+    }
 }
 
 export default extract;
