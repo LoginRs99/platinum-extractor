@@ -27,6 +27,6 @@ describe("File type resolution (FileHandler.worker.resolveFile)", () => {
     // for download (see the `case 'extract':` fallback branch and
     // FileHandler.ts#extractPartialFile).
     it("returns undefined (not a crash) for an unrecognized magic + unrecognized extension", () => {
-        expect(resolveFile("PTD\x00", "GameWord_EUde.bin")).toBeUndefined();
+        expect(resolveFile("UNKN\x00", "UnknownFile.xyz")).toBeUndefined();
     });
 });
