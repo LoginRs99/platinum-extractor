@@ -134,12 +134,13 @@ async function extract(file: PlatinumFileReader): Promise<FileData> {
                 textDataPos
             }
         };
-    } catch (err) {
-        console.warn("Structured parser fallback:", err);
-        // Fallback simple scanner
+    } catch {
+        // Fallback scanner starting at stringDataPos
         const entries: PTDEntry[] = [];
         let entryIdx = 0;
-        for (let i = 28; i < uint8View.length - 2; i += 2) {
+        const startScan = (stringDataPos > 28 && stringDataPos < uint8View.length) ? stringDataPos : 28;
+
+        for (let i = startScan; i < uint8View.length - 2; i += 2) {
             if (uint8View[i] !== shiftKey || uint8View[i + 1] !== shiftKey) {
                 let start = i;
                 while (i < uint8View.length - 1 && !(uint8View[i] === shiftKey && uint8View[i + 1] === shiftKey)) {
