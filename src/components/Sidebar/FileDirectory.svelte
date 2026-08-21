@@ -139,7 +139,10 @@
                 }
             }
         } else if (file.isPartial) {
-            file.extract();
+            // Extraction only resolves the file's real type/data - it doesn't open anything.
+            // Re-run openFile() once it settles so a single click either opens the resolved
+            // viewer or (for a file with no matching parser) offers the raw-download prompt.
+            file.extract().then(() => openFile(file));
         } else {
             fileHandler.openFile(file);
         }

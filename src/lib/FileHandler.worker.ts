@@ -51,7 +51,9 @@ function loadFileTypes(): Record<string, FileTypeModule> {
 
 const filetypes = loadFileTypes();
 
-function resolveFile(magic: string, name: string): string | undefined {
+// Exported (only) so it can be unit-tested directly - it is otherwise only ever
+// called from parseMessage() inside this worker module.
+export function resolveFile(magic: string, name: string): string | undefined {
     let magicMatch = Object.keys(filetypes).find((filetype) => {
         const info = filetypes[filetype].fileInfo;
         if (!info || !info.magic) return false;
@@ -96,8 +98,20 @@ async function parseMessage(type: string, data: any, reply: (data: any) => void)
             let filetype = resolveFile(magic, name);
 
             if (!filetype || !filetypes[filetype] || !filetypes[filetype].extract) {
-                console.warn(`No filetype found for ${name} with magic ${magic}`);
-                reply({ ok: false, error: `No filetype found for ${name} with magic ${magic}`, data: { target: data.target, name: data.name } });
+                // No registered parser recognizes this file (unknown magic + unknown extension).
+                // Don't dead-end the extraction: hand back the raw, undecoded bytes so the
+                // caller can still inspect/download them. This is NOT an error condition -
+                // `ok: true` with `data.target` set is how PlatinumFile detects "unknown" files
+                // (see FileHandler.ts, `this.unknown = data?.name && data?.target`).
+                console.warn(`No filetype found for ${name} with magic ${magic} - returning raw bytes`);
+                reply({
+                    ok: true,
+                    filetype: undefined,
+                    icon: "file",
+                    isRepackable: false,
+                    hasPartialFiles: false,
+                    data: { name, target: data.target }
+                });
                 return;
             }
 
@@ -167,9 +181,16 @@ async function parseMessage(type: string, data: any, reply: (data: any) => void)
     }
 }
 
-self.onmessage = async (event: MessageEvent) => {
-    if (!event.data || !event.data.type) return;
-    await parseMessage(event.data.type, event.data.data, replyBase.bind(null, event.data.id));
-};
+// Guarded so this module can be imported directly in unit tests (e.g. to exercise
+// resolveFile()) without a real Worker global. Inside an actual Web Worker, `self` is
+// always defined, so this guard never changes runtime behavior there.
+if (typeof self !== "undefined" && typeof self.onmessage !== "undefined") {
+    self.onmessage = async (event: MessageEvent) => {
+        if (!event.data || !event.data.type) return;
+        await parseMessage(event.data.type, event.data.data, replyBase.bind(null, event.data.id));
+    };
+}
 
-self.postMessage("loaded");
+if (typeof self !== "undefined" && typeof self.postMessage === "function") {
+    self.postMessage("loaded");
+}

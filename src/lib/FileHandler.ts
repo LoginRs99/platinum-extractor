@@ -239,8 +239,10 @@ export default class FileHandler {
                 });
             });
         
+        if (!response) return undefined;
+
         // Compressed (in PKZ) -> Archive formats (DAT/DTT)
-        if (response && response.data && response.data.files) {
+        if (response.data && response.data.files) {
             let currentFiles = get(this.files);
             const callerIdx = currentFiles.indexOf(caller);
             if (callerIdx !== -1) {
@@ -252,9 +254,20 @@ export default class FileHandler {
                 )
             );
             this.files.set(currentFiles);
+            return response.data;
         }
-        
-        return response;
+
+        // Leaf file: the worker has resolved the decompressed bytes to a concrete filetype
+        // (or, if none matched, to a raw "unknown" payload - see FileHandler.worker.ts).
+        // Update the caller in place so it reflects the REAL resolved type instead of the
+        // parent archive's type (e.g. "PKZ") it was created with, and unwrap `response.data`
+        // so `file.data` holds the actual payload rather than the whole worker response.
+        caller.resolvedType = response.filetype || "unknown";
+        caller.icon = response.icon || caller.icon;
+        caller.repackable = !!response.isRepackable;
+        caller.unknown = !!(response.data && response.data.name && response.data.target);
+
+        return response.data;
     }
 
     async import(files: File[]) {
