@@ -6,29 +6,38 @@ export interface PTDEntry {
     text: string;
 }
 
-export interface PTDSection {
-    sectionId: number;
-    name?: string;
+export interface FileData {
+    magic: string;
+    shiftKey: number;
     entries: PTDEntry[];
 }
 
-export interface FileData {
-    magic: string;
-    version: number;
-    sections: PTDSection[];
+export function decodePTDString(bytes: Uint8Array, shiftKey: number = 0x26): string {
+    const unshifted = new Uint8Array(bytes.length);
+    for (let i = 0; i < bytes.length; i++) {
+        unshifted[i] = (bytes[i] - shiftKey + 256) % 256;
+    }
+
+    // Trim trailing UTF-16 null characters (0x00 0x00)
+    let len = unshifted.length;
+    while (len >= 2 && unshifted[len - 1] === 0 && unshifted[len - 2] === 0) {
+        len -= 2;
+    }
+
+    const decoder = new TextDecoder("utf-16le");
+    return decoder.decode(unshifted.slice(0, len));
 }
 
 async function extract(file: PlatinumFileReader): Promise<FileData> {
     const arrayBuffer = await file.read();
     const view = new DataView(arrayBuffer);
-    const decoderUtf8 = new TextDecoder("utf-8");
-    const decoderUtf16 = new TextDecoder("utf-16le");
+    const uint8View = new Uint8Array(arrayBuffer);
 
-    if (arrayBuffer.byteLength < 16) {
+    if (arrayBuffer.byteLength < 28) {
         return {
             magic: "PTD\0",
-            version: 1,
-            sections: []
+            shiftKey: 0x26,
+            entries: []
         };
     }
 
@@ -39,91 +48,71 @@ async function extract(file: PlatinumFileReader): Promise<FileData> {
         view.getUint8(3)
     );
 
-    const version = view.getUint32(4, true);
-    const count = view.getUint32(8, true);
-    const tableOffset = view.getUint32(12, true) || 16;
-
-    const sections: PTDSection[] = [];
+    const shiftKey = view.getUint32(8, true) || 0x26;
     const entries: PTDEntry[] = [];
 
-    // Parse string offset table
-    if (tableOffset > 0 && tableOffset < arrayBuffer.byteLength) {
-        let offset = tableOffset;
-        const entryCount = Math.min(count, Math.floor((arrayBuffer.byteLength - tableOffset) / 8));
+    const count = view.getUint32(12, true);
+    const tableOffset = view.getUint32(16, true) || 28;
+    const stringDataPos = view.getUint32(24, true) || (tableOffset + count * 16);
 
-        for (let i = 0; i < entryCount; i++) {
-            const entryId = view.getUint32(offset, true);
-            const strOffset = view.getUint32(offset + 4, true);
-            offset += 8;
+    if (count > 0 && tableOffset < arrayBuffer.byteLength) {
+        let textPtr = stringDataPos;
 
-            if (strOffset < arrayBuffer.byteLength) {
-                // Find null terminator
-                let end = strOffset;
-                while (end < arrayBuffer.byteLength && view.getUint8(end) !== 0) {
-                    end++;
-                }
+        for (let i = 0; i < count; i++) {
+            const entryPos = tableOffset + i * 16;
+            if (entryPos + 16 > arrayBuffer.byteLength) break;
 
-                let text = "";
-                if (end > strOffset) {
-                    const slice = arrayBuffer.slice(strOffset, end);
-                    try {
-                        text = decoderUtf8.decode(slice);
-                    } catch {
-                        text = decoderUtf16.decode(slice);
-                    }
-                }
+            const id = view.getUint32(entryPos, true);
+            const charLength = view.getUint32(entryPos + 8, true);
+            const byteLength = view.getUint32(entryPos + 12, true) || ((charLength + 1) * 2);
+
+            if (textPtr + byteLength <= arrayBuffer.byteLength) {
+                const rawBytes = uint8View.slice(textPtr, textPtr + byteLength);
+                const text = decodePTDString(rawBytes, shiftKey);
 
                 entries.push({
-                    id: entryId,
+                    id,
+                    key: `Entry_${id}`,
                     text
                 });
+                textPtr += byteLength;
             }
-        }
-    } else {
-        // Fallback: Linear scan for null-terminated strings if offset table is non-standard
-        let pos = 16;
-        let strIdx = 0;
-        while (pos < arrayBuffer.byteLength) {
-            // skip null padding
-            while (pos < arrayBuffer.byteLength && view.getUint8(pos) === 0) {
-                pos++;
-            }
-            if (pos >= arrayBuffer.byteLength) break;
-
-            let start = pos;
-            while (pos < arrayBuffer.byteLength && view.getUint8(pos) !== 0) {
-                pos++;
-            }
-
-            if (pos > start) {
-                const slice = arrayBuffer.slice(start, pos);
-                let text = "";
-                try {
-                    text = decoderUtf8.decode(slice);
-                } catch {
-                    text = decoderUtf16.decode(slice);
-                }
-                if (text.trim().length > 0) {
-                    entries.push({
-                        id: strIdx++,
-                        text
-                    });
-                }
-            }
-            pos++;
         }
     }
 
-    sections.push({
-        sectionId: 0,
-        name: "MainText",
-        entries
-    });
+    // Fallback: If header table didn't parse entries, scan for UTF-16 null-terminated strings with 0x26 shift
+    if (entries.length === 0) {
+        let pos = 28;
+        let entryIdx = 0;
+
+        while (pos + 4 < arrayBuffer.byteLength) {
+            // Null terminator in shifted UTF-16LE is [shiftKey, shiftKey]
+            let start = pos;
+            while (pos + 1 < arrayBuffer.byteLength && !(uint8View[pos] === shiftKey && uint8View[pos + 1] === shiftKey)) {
+                pos += 2;
+            }
+
+            const strByteLen = (pos + 2) - start;
+            if (strByteLen >= 4) {
+                const rawBytes = uint8View.slice(start, pos + 2);
+                const text = decodePTDString(rawBytes, shiftKey);
+                if (text.trim().length > 0 && !/^[\x00-\x1F\x7F]+$/.test(text)) {
+                    entries.push({
+                        id: entryIdx,
+                        key: `String_${entryIdx}`,
+                        text
+                    });
+                    entryIdx++;
+                }
+            }
+            pos += 2; // skip null terminator
+        }
+    }
 
     return {
         magic,
-        version,
-        sections
+        shiftKey,
+        entries
     };
 }
 

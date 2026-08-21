@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { Search, Download, Upload, Save, FileText, Check, Plus, Trash2 } from "@lucide/svelte";
+    import { Search, Download, Upload, FileText } from "@lucide/svelte";
     import type { FileData, PTDEntry } from "./extract";
     import repack from "./repack";
 
@@ -15,12 +15,12 @@
 
     let ptdData: FileData = $state({
         magic: "PTD\0",
-        version: 1,
-        sections: [{ sectionId: 0, name: "MainText", entries: [] }]
+        shiftKey: 0x26,
+        entries: []
     });
 
     $effect(() => {
-        if (data && data.sections) {
+        if (data && Array.isArray(data.entries)) {
             ptdData = data;
         }
     });
@@ -28,16 +28,13 @@
     let searchQuery = $state("");
     let fileInput: HTMLInputElement | undefined = $state();
 
-    let allEntries = $derived(
-        ptdData.sections.flatMap(s => s.entries)
-    );
-
     let filteredEntries = $derived(
-        allEntries.filter(entry => {
+        (ptdData.entries || []).filter(entry => {
             if (!searchQuery.trim()) return true;
             const query = searchQuery.toLowerCase();
             return (
                 String(entry.id).includes(query) ||
+                (entry.key || "").toLowerCase().includes(query) ||
                 (entry.text || "").toLowerCase().includes(query)
             );
         })
@@ -53,7 +50,18 @@
     }
 
     function exportJSON() {
-        const jsonContent = JSON.stringify(ptdData, null, 2);
+        // Build both key-value dictionary and list for translator friendliness
+        const exportObj = {
+            magic: "PTD",
+            count: ptdData.entries.length,
+            entries: ptdData.entries.map(e => ({
+                id: e.id,
+                key: e.key || `String_${e.id}`,
+                text: e.text
+            }))
+        };
+
+        const jsonContent = JSON.stringify(exportObj, null, 2);
         const blob = new Blob([jsonContent], { type: "application/json" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
@@ -73,14 +81,22 @@
         reader.onload = () => {
             try {
                 const parsed = JSON.parse(reader.result as string);
-                if (parsed && Array.isArray(parsed.sections)) {
-                    ptdData = parsed;
-                } else if (parsed && Array.isArray(parsed.entries)) {
-                    ptdData = {
-                        magic: "PTD\0",
-                        version: 1,
-                        sections: [{ sectionId: 0, name: "MainText", entries: parsed.entries }]
-                    };
+                if (parsed && Array.isArray(parsed.entries)) {
+                    ptdData.entries = parsed.entries;
+                } else if (Array.isArray(parsed)) {
+                    ptdData.entries = parsed;
+                } else if (typeof parsed === "object") {
+                    // Key-value object mapping
+                    const entries: PTDEntry[] = [];
+                    let idx = 0;
+                    for (const [k, v] of Object.entries(parsed)) {
+                        if (typeof v === "string") {
+                            entries.push({ id: idx++, key: k, text: v });
+                        }
+                    }
+                    if (entries.length > 0) {
+                        ptdData.entries = entries;
+                    }
                 }
                 setUnsavedChanges(true);
             } catch (err) {
@@ -110,12 +126,12 @@
                 <Search size={14} class="search-icon" />
                 <input
                     type="text"
-                    placeholder="Search strings or ID..."
+                    placeholder="Search strings, keys, or ID..."
                     bind:value={searchQuery}
                     aria-label="Filter text"
                 />
             </div>
-            <span class="count-badge">{filteredEntries.length} of {allEntries.length} strings</span>
+            <span class="count-badge">{filteredEntries.length} of {ptdData.entries.length} strings</span>
         </div>
 
         <div class="toolbar-right">
@@ -140,15 +156,20 @@
         <table class="strings-table">
             <thead>
                 <tr>
-                    <th class="col-id">ID</th>
-                    <th class="col-text">Text / Translation Content</th>
+                    <th class="col-id">ID / Key</th>
+                    <th class="col-text">Text Content</th>
                 </tr>
             </thead>
             <tbody>
                 {#each filteredEntries as entry (entry.id)}
                     <tr>
                         <td class="col-id">
-                            <span class="id-tag">#{entry.id}</span>
+                            <div class="id-group">
+                                <span class="id-tag">#{entry.id}</span>
+                                {#if entry.key}
+                                    <span class="key-name">{entry.key}</span>
+                                {/if}
+                            </div>
                         </td>
                         <td class="col-text">
                             <textarea
@@ -164,7 +185,11 @@
                 {#if filteredEntries.length === 0}
                     <tr>
                         <td colspan="2" class="empty-state">
-                            No strings match "{searchQuery}"
+                            {#if ptdData.entries.length === 0}
+                                No text strings found in this file.
+                            {:else}
+                                No strings match "{searchQuery}"
+                            {/if}
                         </td>
                     </tr>
                 {/if}
@@ -219,7 +244,7 @@
         border-radius: 6px;
         padding: 4px 8px;
         gap: 6px;
-        width: 220px;
+        width: 240px;
     }
 
     .search-box input {
@@ -299,7 +324,13 @@
     }
 
     .col-id {
-        width: 90px;
+        width: 180px;
+    }
+
+    .id-group {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
     }
 
     .id-tag {
@@ -311,6 +342,14 @@
         padding: 2px 6px;
         border-radius: 4px;
         border: 1px solid rgba(0, 99, 219, 0.3);
+        align-self: flex-start;
+    }
+
+    .key-name {
+        font-family: monospace;
+        font-size: 0.72rem;
+        color: var(--text-muted, #9595a6);
+        word-break: break-all;
     }
 
     .col-text {
