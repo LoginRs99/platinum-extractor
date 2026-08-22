@@ -70,14 +70,23 @@ describe("PTD Binary Text Archive Parser & Repacker", () => {
             shiftKey: 0x26,
             parseMethod: "structured" as const,
             rawPrefix: dummyPrefix,
-            rawSuffix: new Uint8Array(0),
             headerInfo: {
+                sectionCount: 1,
                 stringDataPos: 28,
-                hasGroupId: false,
-                groupCount: 0,
-                textCount: 3,
-                charNameCount: 0,
-                textDataPos: 40
+                sections: [
+                    {
+                        sectionIndex: 0,
+                        sectionHeaderPos: 28,
+                        valPos: 48,
+                        textHeaderPos: 48,
+                        charNameHeaderPos: 60,
+                        textDescPos: 72,
+                        textCount: 3,
+                        charNameDescPos: 120,
+                        charNameCount: 0,
+                        charNameAndSuffix: new Uint8Array(0)
+                    }
+                ]
             },
             entries: [
                 { id: 0, text: "Line 1" },

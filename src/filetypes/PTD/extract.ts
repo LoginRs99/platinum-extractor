@@ -7,6 +7,19 @@ export interface PTDEntry {
     text: string;
 }
 
+export interface SectionInfo {
+    sectionIndex: number;
+    sectionHeaderPos: number;
+    valPos: number;
+    textHeaderPos: number;
+    charNameHeaderPos: number;
+    textDescPos: number;
+    textCount: number;
+    charNameDescPos: number;
+    charNameCount: number;
+    charNameAndSuffix: Uint8Array;
+}
+
 export interface FileData {
     magic: string;
     shiftKey: number;
@@ -15,12 +28,9 @@ export interface FileData {
     rawPrefix?: Uint8Array;
     rawSuffix?: Uint8Array;
     headerInfo?: {
+        sectionCount: number;
         stringDataPos: number;
-        hasGroupId: boolean;
-        groupCount: number;
-        textCount: number;
-        charNameCount: number;
-        textDataPos: number;
+        sections: SectionInfo[];
     };
 }
 
@@ -44,7 +54,7 @@ async function extract(file: PlatinumFileReader): Promise<FileData> {
 
     if (arrayBuffer.byteLength < 28) {
         return {
-            magic: "PTD\0",
+            magic: "",
             shiftKey: 0x26,
             parseMethod: "fallback",
             entries: []
@@ -61,6 +71,7 @@ async function extract(file: PlatinumFileReader): Promise<FileData> {
     const shiftKey = view.getUint32(8, true) || 0x26;
     const hashCount = view.getUint32(12, true);
     const hashDataPos = view.getUint32(16, true);
+    const sectionCount = view.getUint32(20, true);
     const stringDataPos = view.getUint32(24, true);
 
     try {
@@ -79,47 +90,78 @@ async function extract(file: PlatinumFileReader): Promise<FileData> {
             }
         }
 
-        // 2. Read section headers at stringDataPos
-        let cur = stringDataPos;
-        const hasGroupId = view.getUint32(cur + 4, true) === 1;
-        cur += 20;
-
-        let groupCount = 0;
-        if (hasGroupId) {
-            groupCount = view.getUint32(cur + 4, true);
-            cur += 12 + groupCount * 4;
-        }
-
-        const textCount = view.getUint32(cur + 4, true);
-        cur += 12; // Text header
-
-        const charNameCount = view.getUint32(cur + 4, true);
-        cur += 12; // CharName header
-
-        const textDataPos = cur;
-        const textDescriptorsEnd = textDataPos + textCount * 16;
-
-        let textPtr = textDescriptorsEnd;
+        // 2. Read sections sequentially starting at stringDataPos
+        const sections: SectionInfo[] = [];
         const entries: PTDEntry[] = [];
-        for (let i = 0; i < textCount; i++) {
-            const p = textDataPos + i * 16;
-            const hash = view.getUint32(p, true).toString(16).padStart(8, '0');
-            const byteLen = view.getUint32(p + 12, true);
+        let globalEntryId = 0;
 
-            const text = decodeString(uint8View.slice(textPtr, textPtr + byteLen), shiftKey);
-            const key = hashNames[hash] || `Key_${hash}`;
+        for (let s = 0; s < sectionCount; s++) {
+            const sPos = stringDataPos + s * 20;
+            const count1 = view.getUint32(sPos + 4, true);
+            const off1 = view.getUint32(sPos + 8, true);
+            const count2 = view.getUint32(sPos + 12, true);
+            const off2 = view.getUint32(sPos + 16, true);
 
-            entries.push({
-                id: i,
-                hash,
-                key,
-                text
+            const valPos = sPos + off2;
+            const textHeaderPos = valPos;
+            const textCount = view.getUint32(textHeaderPos + 4, true);
+
+            const charNameHeaderPos = valPos + 12;
+            const charNameCount = count2 >= 2 ? view.getUint32(charNameHeaderPos + 4, true) : 0;
+            const charNameRelOffset = count2 >= 2 ? view.getUint32(charNameHeaderPos + 8, true) : 0;
+
+            const textDescPos = valPos + 24;
+            const charNameDescPos = charNameHeaderPos + charNameRelOffset;
+
+            // End of this section is start of next section's text descriptors (or EOF for last section)
+            let nextSectionCut: number;
+            if (s + 1 < sectionCount) {
+                const nextSPos = stringDataPos + (s + 1) * 20;
+                const nextOff2 = view.getUint32(nextSPos + 16, true);
+                const nextValPos = nextSPos + nextOff2;
+                const nextTextCount = view.getUint32(nextValPos + 4, true);
+                nextSectionCut = nextValPos + 24 + nextTextCount * 16;
+            } else {
+                nextSectionCut = arrayBuffer.byteLength;
+            }
+
+            for (let i = 0; i < textCount; i++) {
+                const descPos = textDescPos + i * 16;
+                const hash = view.getUint32(descPos, true).toString(16).padStart(8, '0');
+                const relOffset = view.getUint32(descPos + 4, true);
+                const charLen = view.getUint32(descPos + 8, true);
+                const byteLen = view.getUint32(descPos + 12, true);
+
+                const strBytes = uint8View.slice(textDescPos + relOffset, textDescPos + relOffset + byteLen);
+                const text = decodeString(strBytes, shiftKey);
+                const key = hashNames[hash] || `Key_${hash}`;
+
+                entries.push({
+                    id: globalEntryId++,
+                    hash,
+                    key,
+                    text
+                });
+            }
+
+            const charNameAndSuffix = uint8View.slice(charNameDescPos, nextSectionCut);
+
+            sections.push({
+                sectionIndex: s,
+                sectionHeaderPos: sPos,
+                valPos,
+                textHeaderPos,
+                charNameHeaderPos,
+                textDescPos,
+                textCount,
+                charNameDescPos,
+                charNameCount,
+                charNameAndSuffix
             });
-            textPtr += byteLen;
         }
 
-        const rawPrefix = uint8View.slice(0, textDescriptorsEnd);
-        const rawSuffix = uint8View.slice(textPtr);
+        const firstSectionTextDescEnd = sections[0].textDescPos + sections[0].textCount * 16;
+        const rawPrefix = uint8View.slice(0, firstSectionTextDescEnd);
 
         return {
             magic,
@@ -127,17 +169,14 @@ async function extract(file: PlatinumFileReader): Promise<FileData> {
             parseMethod: "structured",
             entries,
             rawPrefix,
-            rawSuffix,
             headerInfo: {
+                sectionCount,
                 stringDataPos,
-                hasGroupId,
-                groupCount,
-                textCount,
-                charNameCount,
-                textDataPos
+                sections
             }
         };
-    } catch {
+    } catch (err) {
+        console.error('[PTD structured parse failed]', err);
         // Fallback scanner starting at stringDataPos
         const entries: PTDEntry[] = [];
         let entryIdx = 0;
@@ -149,9 +188,9 @@ async function extract(file: PlatinumFileReader): Promise<FileData> {
                 while (i < uint8View.length - 1 && !(uint8View[i] === shiftKey && uint8View[i + 1] === shiftKey)) {
                     i += 2;
                 }
-                const rawBytes = uint8View.slice(start, i);
-                const text = decodeString(rawBytes, shiftKey);
-                if (text.length >= 1 && !text.includes('\u0000')) {
+                const bytes = uint8View.slice(start, i);
+                const text = decodeString(bytes, shiftKey);
+                if (text && text.trim().length > 0) {
                     entries.push({
                         id: entryIdx,
                         hash: `entry_${entryIdx}`,
@@ -162,6 +201,7 @@ async function extract(file: PlatinumFileReader): Promise<FileData> {
                 }
             }
         }
+
         return {
             magic,
             shiftKey,
