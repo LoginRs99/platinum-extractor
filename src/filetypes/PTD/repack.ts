@@ -41,7 +41,7 @@ async function repack(data: FileData | any): Promise<ArrayBuffer> {
             entryCursor += sec.textCount;
 
             const encodedStrings: Uint8Array[] = [];
-            let relStringOffset = sec.textCount * 16; // offset from textDescPos
+            let textPayloadOffset = 0;
 
             const targetDescBlock = s === 0 ? outputBlocks[0] : outputBlocks[outputBlocks.length - 1];
             const targetDescOffset = s === 0 ? sec.textDescPos : (targetDescBlock.byteLength - sec.textCount * 16);
@@ -53,15 +53,18 @@ async function repack(data: FileData | any): Promise<ArrayBuffer> {
                 encodedStrings.push(encoded);
 
                 const p = targetDescOffset + i * 16;
-                descView.setUint32(p + 4, relStringOffset, true);
+                // relOffset is relative to this descriptor's position p
+                const relOffsetToPayload = (sec.textCount - i) * 16 + textPayloadOffset;
+
+                descView.setUint32(p + 4, relOffsetToPayload, true);
                 descView.setUint32(p + 8, (entry.text || "").length + 1, true);
                 descView.setUint32(p + 12, encoded.byteLength, true);
 
-                relStringOffset += encoded.byteLength;
+                textPayloadOffset += encoded.byteLength;
             }
 
             // Concatenate text string payload
-            const textPayload = new Uint8Array(relStringOffset - sec.textCount * 16);
+            const textPayload = new Uint8Array(textPayloadOffset);
             let strPtr = 0;
             for (const enc of encodedStrings) {
                 textPayload.set(enc, strPtr);
@@ -106,7 +109,7 @@ async function repack(data: FileData | any): Promise<ArrayBuffer> {
 
             // Patch CharName header offset in this section
             const patchedCharNameHeaderPos = (s === 0 ? sec.charNameHeaderPos : (sec.charNameHeaderPos + runningDelta));
-            finalView.setUint32(patchedCharNameHeaderPos + 8, sec.textCount * 16 + newTextLen, true);
+            finalView.setUint32(patchedCharNameHeaderPos + 8, 12 + sec.textCount * 16 + newTextLen, true);
 
             // Compute delta for this section
             const origTextLen = sec.charNameDescPos - (sec.textDescPos + sec.textCount * 16);
@@ -167,7 +170,7 @@ async function repack(data: FileData | any): Promise<ArrayBuffer> {
     let ptr = hashDataPos;
     for (let i = 0; i < entries.length; i++) {
         view.setUint32(ptr, entries[i].id !== undefined ? entries[i].id : i, true);
-        view.setUint32(ptr + 4, 0, true);
+        view.setUint32(ptr + 4, (hashCount - i) * 16 + (stringOffsets[i] - stringDataPos), true);
         view.setUint32(ptr + 8, (entries[i].text || "").length + 1, true);
         view.setUint32(ptr + 12, encodedStrings[i].byteLength, true);
         ptr += 16;

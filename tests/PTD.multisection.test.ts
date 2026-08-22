@@ -61,7 +61,6 @@ function buildSyntheticMultiSectionPTD(): ArrayBuffer {
     const s0ValueBlockSize = 24 + 32 + s0TextPayloadSize;
 
     // Section 1 starts after Section 0
-    // s1Pos + off1 = s0Pos + s0Off2 + s0ValueBlockSize
     const s1DataBlockAbsPos = s0Pos + s0Off2 + s0ValueBlockSize;
     const s1Off1 = s1DataBlockAbsPos - s1Pos;
     const s1Off2 = s1Off1 + 20; // ValueBlock after 20-byte DataBlock
@@ -87,12 +86,13 @@ function buildSyntheticMultiSectionPTD(): ArrayBuffer {
     view.setUint32(20, 2, true); // sectionCount = 2
     view.setUint32(24, stringDataPos, true); // stringDataPos
 
-    // 2. Global Key Table
+    // 2. Global Key Table - relOffset is relative to descriptor p
     let curKeyStrOff = 0;
     for (let i = 0; i < hashCount; i++) {
         const descPos = hashDataPos + i * 16;
+        const relOffsetFromP = (hashCount - i) * 16 + curKeyStrOff;
         view.setUint32(descPos, keyHashes[i], true);
-        view.setUint32(descPos + 4, curKeyStrOff, true);
+        view.setUint32(descPos + 4, relOffsetFromP, true);
         view.setUint32(descPos + 8, keys[i].length + 1, true);
         view.setUint32(descPos + 12, encodedKeys[i].byteLength, true);
 
@@ -134,17 +134,19 @@ function buildSyntheticMultiSectionPTD(): ArrayBuffer {
     view.setUint32(s0ValPos + 16, 0, true); // charNameCount = 0
     view.setUint32(s0ValPos + 20, 24 + 32 + s0TextPayloadSize, true); // offset past text strings
 
-    // Section 0 Text Descriptors & Strings
+    // Section 0 Text Descriptors & Strings - relOffset is relative to descriptor p
     const s0DescPos = s0ValPos + 24;
-    let s0StrRelOff = 32; // offset from s0DescPos
+    let s0PayloadOffset = 0;
     for (let i = 0; i < 2; i++) {
-        view.setUint32(s0DescPos + i * 16, s0Hashes[i], true);
-        view.setUint32(s0DescPos + i * 16 + 4, s0StrRelOff, true);
-        view.setUint32(s0DescPos + i * 16 + 8, s0Texts[i].length + 1, true);
-        view.setUint32(s0DescPos + i * 16 + 12, s0EncodedTexts[i].byteLength, true);
+        const descP = s0DescPos + i * 16;
+        const relOffsetFromDesc = (2 - i) * 16 + s0PayloadOffset;
+        view.setUint32(descP, s0Hashes[i], true);
+        view.setUint32(descP + 4, relOffsetFromDesc, true);
+        view.setUint32(descP + 8, s0Texts[i].length + 1, true);
+        view.setUint32(descP + 12, s0EncodedTexts[i].byteLength, true);
 
-        uint8.set(s0EncodedTexts[i], s0DescPos + s0StrRelOff);
-        s0StrRelOff += s0EncodedTexts[i].byteLength;
+        uint8.set(s0EncodedTexts[i], s0DescPos + 32 + s0PayloadOffset);
+        s0PayloadOffset += s0EncodedTexts[i].byteLength;
     }
 
     // 5. Write Section 1
@@ -166,17 +168,19 @@ function buildSyntheticMultiSectionPTD(): ArrayBuffer {
     view.setUint32(s1ValPos + 16, 0, true); // charNameCount = 0
     view.setUint32(s1ValPos + 20, 24 + 32 + s1TextPayloadSize, true);
 
-    // Section 1 Text Descriptors & Strings
+    // Section 1 Text Descriptors & Strings - relOffset is relative to descriptor p
     const s1DescPos = s1ValPos + 24;
-    let s1StrRelOff = 32;
+    let s1PayloadOffset = 0;
     for (let i = 0; i < 2; i++) {
-        view.setUint32(s1DescPos + i * 16, s1Hashes[i], true);
-        view.setUint32(s1DescPos + i * 16 + 4, s1StrRelOff, true);
-        view.setUint32(s1DescPos + i * 16 + 8, s1Texts[i].length + 1, true);
-        view.setUint32(s1DescPos + i * 16 + 12, s1EncodedTexts[i].byteLength, true);
+        const descP = s1DescPos + i * 16;
+        const relOffsetFromDesc = (2 - i) * 16 + s1PayloadOffset;
+        view.setUint32(descP, s1Hashes[i], true);
+        view.setUint32(descP + 4, relOffsetFromDesc, true);
+        view.setUint32(descP + 8, s1Texts[i].length + 1, true);
+        view.setUint32(descP + 12, s1EncodedTexts[i].byteLength, true);
 
-        uint8.set(s1EncodedTexts[i], s1DescPos + s1StrRelOff);
-        s1StrRelOff += s1EncodedTexts[i].byteLength;
+        uint8.set(s1EncodedTexts[i], s1DescPos + 32 + s1PayloadOffset);
+        s1PayloadOffset += s1EncodedTexts[i].byteLength;
     }
 
     return buffer;
@@ -195,10 +199,11 @@ describe("PTD Multi-Section Parser & Repacker Regression", () => {
         expect(result.headerInfo?.sectionCount).toBe(2);
         expect(result.entries.length).toBe(4);
 
-        // 3. Must have real resolved keys, NO fallback signatures
+        // 3. Must have real resolved keys, NO fallback signatures and NO embedded nulls
         for (const entry of result.entries) {
             expect(entry.key?.startsWith("String_")).toBe(false);
             expect(entry.hash?.startsWith("entry_")).toBe(false);
+            expect(entry.text.includes("\u0000")).toBe(false);
         }
 
         // 4. Exact text and key verification across both sections
@@ -240,6 +245,11 @@ describe("PTD Multi-Section Parser & Repacker Regression", () => {
         expect(reExtracted.parseMethod).toBe("structured");
         expect(reExtracted.headerInfo?.sectionCount).toBe(2);
         expect(reExtracted.entries.length).toBe(4);
+
+        // Assert NO embedded nulls after round-trip either
+        for (const entry of reExtracted.entries) {
+            expect(entry.text.includes("\u0000")).toBe(false);
+        }
 
         expect(reExtracted.entries[0].text).toBe("Hello");
         expect(reExtracted.entries[1].text).toBe("World");

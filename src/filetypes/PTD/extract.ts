@@ -75,18 +75,18 @@ async function extract(file: PlatinumFileReader): Promise<FileData> {
     const stringDataPos = view.getUint32(24, true);
 
     try {
-        // 1. Read hash table (key names)
+        // 1. Read hash table (key names) - key string address is relative to descriptor p
         const hashNames: Record<string, string> = {};
-        let hashNamePos = hashDataPos + hashCount * 16;
         for (let i = 0; i < hashCount; i++) {
             const p = hashDataPos + i * 16;
             const hash = view.getUint32(p, true).toString(16).padStart(8, '0');
+            const keyRelOffset = view.getUint32(p + 4, true);
             const byteLength = view.getUint32(p + 12, true);
 
-            if (hashNamePos + byteLength <= arrayBuffer.byteLength) {
-                const name = decodeString(uint8View.slice(hashNamePos, hashNamePos + byteLength), shiftKey);
+            const keyAddr = p + keyRelOffset;
+            if (keyAddr + byteLength <= arrayBuffer.byteLength) {
+                const name = decodeString(uint8View.slice(keyAddr, keyAddr + byteLength), shiftKey);
                 hashNames[hash] = name;
-                hashNamePos += byteLength;
             }
         }
 
@@ -132,7 +132,9 @@ async function extract(file: PlatinumFileReader): Promise<FileData> {
                 const charLen = view.getUint32(descPos + 8, true);
                 const byteLen = view.getUint32(descPos + 12, true);
 
-                const strBytes = uint8View.slice(textDescPos + relOffset, textDescPos + relOffset + byteLen);
+                // relOffset is relative to descPos (this descriptor's own position)
+                const strAddr = descPos + relOffset;
+                const strBytes = uint8View.slice(strAddr, strAddr + byteLen);
                 const text = decodeString(strBytes, shiftKey);
                 const key = hashNames[hash] || `Key_${hash}`;
 
