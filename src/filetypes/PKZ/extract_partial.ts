@@ -34,7 +34,7 @@ async function extract_partial(partialFile: PartialFile, fileData: FileData) : P
             arrayBuffer = copyBuf.buffer;
             let bit32 = new Uint32Array(arrayBuffer);
             let header = bit32.indexOf(5521732);
-            if (header) {
+            if (header !== -1) {
                 arrayBuffer = arrayBuffer.slice(header * 4, header * 4 + partialFile.size);
             } else {
                 console.warn('Could not find DAT header in decompressed file. It may have been extracted wrong.');
